@@ -67,13 +67,43 @@ This file is the canonical project context for all Claude Code sessions. Read it
 face-morphing-detection/
 ├── frontend/              → Next.js 15 app
 ├── backend/               → FastAPI ML API
+│   ├── app/
+│   │   ├── main.py        → FastAPI entry point, CORS, lifespan
+│   │   ├── core/
+│   │   │   ├── config.py  → Pydantic Settings (env vars)
+│   │   │   ├── database.py→ SQLAlchemy engine + get_db dependency
+│   │   │   └── logging.py → Loguru setup
+│   │   ├── api/
+│   │   │   ├── deps.py    → Shared FastAPI dependencies
+│   │   │   └── v1/
+│   │   │       ├── router.py         → Aggregated v1 router
+│   │   │       └── endpoints/
+│   │   │           └── health.py     → GET /api/v1/health
+│   │   ├── models/base.py → SQLAlchemy DeclarativeBase
+│   │   ├── schemas/       → Pydantic v2 response schemas
+│   │   ├── services/      → Business logic layer
+│   │   └── ml/            → ML pipeline modules (added per task)
+│   ├── tests/             → pytest test suite
+│   ├── alembic/           → DB migrations
+│   ├── Dockerfile         → Multi-stage production image
+│   ├── requirements.txt
+│   └── requirements-dev.txt
 ├── ml/                    → Training scripts, notebooks, model artifacts
 ├── .github/workflows/     → CI/CD pipelines
-├── docker-compose.yml
+├── docker-compose.yml     → postgres + pgadmin + backend services
 ├── CLAUDE.md              → Project context for Claude
 ├── README.md
 └── .gitignore
 ```
+
+### API URL Conventions
+- **Local (host machine):** http://localhost:8000
+- **Inside Docker network:** http://fmd-backend:8000
+- **Swagger UI:** http://localhost:8000/docs
+- **ReDoc:** http://localhost:8000/redoc
+- **Health endpoint:** http://localhost:8000/api/v1/health
+- **DATABASE_URL inside Docker:** `postgresql://fmd_user:<pw>@fmd-postgres:5432/face_morphing_db`
+  - Host = container name `fmd-postgres`, port = `5432` (NOT the host-mapped `5435`)
 
 ---
 

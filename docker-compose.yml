@@ -26,6 +26,30 @@ services:
       - fmd-network
 
   # ─────────────────────────────────────────────
+  # FastAPI backend — ML detection API
+  # ─────────────────────────────────────────────
+  backend:
+    build: ./backend
+    container_name: fmd-backend
+    ports:
+      - "8000:8000"
+    environment:
+      # Host must be the container name, not localhost (port 5432, not 5435)
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@fmd-postgres:5432/${POSTGRES_DB}
+      CORS_ORIGINS: http://localhost:3000
+      ENV: development
+      LOG_LEVEL: INFO
+      PROJECT_NAME: Face Morphing Detection API
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - fmd-network
+
+  # ─────────────────────────────────────────────
   # pgAdmin 4 — database GUI
   # ─────────────────────────────────────────────
   pgadmin:
