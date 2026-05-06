@@ -1,0 +1,61 @@
+services:
+
+  # ─────────────────────────────────────────────
+  # PostgreSQL 16 — primary database
+  # ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: fmd-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - fmd-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # $$VAR expands inside the container, not on the host, avoiding compose substitution
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - fmd-network
+
+  # ─────────────────────────────────────────────
+  # pgAdmin 4 — database GUI
+  # ─────────────────────────────────────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: fmd-pgadmin
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    volumes:
+      - fmd-pgadmin-data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - fmd-network
+
+# ─────────────────────────────────────────────
+# Named volumes — data persists across restarts
+# Run `docker-compose down -v` to wipe all data
+# ─────────────────────────────────────────────
+volumes:
+  fmd-postgres-data:
+  fmd-pgadmin-data:
+
+# ─────────────────────────────────────────────
+# Isolated bridge network for all FMD services
+# ─────────────────────────────────────────────
+networks:
+  fmd-network:
+    driver: bridge
