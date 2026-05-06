@@ -36,7 +36,8 @@ This file is the canonical project context for all Claude Code sessions. Read it
 - Uvicorn server
 
 ### Database
-- PostgreSQL via Supabase
+- **Local dev:** PostgreSQL 16 running in Docker via `docker-compose` (container: `fmd-postgres`)
+- **Production:** Supabase (same PostgreSQL 16 engine — identical SQL, zero migration surprises)
 - Prisma ORM (Next.js side)
 - SQLAlchemy (FastAPI side)
 
@@ -249,6 +250,48 @@ All secrets live in environment files. Never commit real values.
 | `CLOUDINARY_API_SECRET`       | Backend       | Cloudinary API secret (backend)    |
 | `SENTRY_DSN`                  | Backend       | Sentry DSN for FastAPI             |
 | `ALLOWED_ORIGINS`             | Backend       | CORS allowed origins               |
+
+---
+
+## LOCAL DEVELOPMENT SETUP
+
+### Prerequisites
+- Docker Desktop 4.x+ (running)
+- Node.js 20+
+- Python 3.11+
+- Git
+
+### Database (Docker)
+
+```bash
+# Copy env template and fill in values
+cp .env.example .env
+
+# Start PostgreSQL + pgAdmin in background
+docker compose up -d
+
+# Verify both containers are running and postgres is healthy
+docker ps
+
+# View postgres logs (follow)
+docker compose logs -f postgres
+
+# Stop containers (data is preserved in named volumes)
+docker compose down
+
+# Stop AND delete all data (full reset)
+docker compose down -v
+```
+
+### Access pgAdmin GUI
+- URL: http://localhost:5050
+- Login: `PGADMIN_DEFAULT_EMAIL` / `PGADMIN_DEFAULT_PASSWORD` from `.env`
+- Add server: host = `fmd-postgres`, port = `5432`, user/db from `.env`
+
+### Direct CLI access
+```bash
+docker exec -it fmd-postgres psql -U fmd_user -d face_morphing_db
+```
 
 ---
 

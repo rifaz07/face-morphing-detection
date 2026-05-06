@@ -102,38 +102,78 @@ Image Upload
 
 ## Setup Instructions
 
-> Full setup guide coming after scaffolding is complete.
-
 ### Prerequisites
 
-- Node.js 20+
-- Python 3.11+
-- Docker + Docker Compose
-- PostgreSQL (or Supabase account)
-- Cloudinary account
-- Clerk account
+| Tool | Version | Purpose |
+|------|---------|---------|
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | 4.x+ | Runs PostgreSQL + pgAdmin locally |
+| [Node.js](https://nodejs.org/) | 20+ | Frontend development |
+| [Python](https://www.python.org/) | 3.11+ | Backend / ML API |
+| [Git](https://git-scm.com/) | any | Version control |
 
-### Quick Start (Local Dev)
+### Step 1 — Clone the repo
 
 ```bash
-# 1. Clone the repo
 git clone https://github.com/rifaz07/face-morphing-detection.git
 cd face-morphing-detection
-
-# 2. Copy env template
-cp .env.example .env.local
-
-# 3. Start all services with Docker
-docker-compose up --build
-
-# OR run individually:
-
-# Frontend
-cd frontend && npm install && npm run dev
-
-# Backend
-cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload
 ```
+
+### Step 2 — Configure environment variables
+
+```bash
+cp .env.example .env
+# Open .env and fill in your values (passwords, API keys, etc.)
+```
+
+### Step 3 — Start the database
+
+```bash
+docker compose up -d
+```
+
+This starts:
+- **PostgreSQL 16** on `localhost:5432` (container: `fmd-postgres`)
+- **pgAdmin 4** on `localhost:5050` (container: `fmd-pgadmin`)
+
+### Step 4 — Verify both containers are healthy
+
+```bash
+docker ps
+```
+
+You should see both containers with status `healthy` or `Up`.
+
+### Step 5 — Access pgAdmin
+
+Open **http://localhost:5050** in your browser.
+
+- **Email:** value of `PGADMIN_DEFAULT_EMAIL` in your `.env`
+- **Password:** value of `PGADMIN_DEFAULT_PASSWORD` in your `.env`
+
+To add the database server in pgAdmin:
+1. Right-click **Servers** → **Register → Server**
+2. **Name:** `FMD Local`
+3. **Connection tab:** Host = `fmd-postgres`, Port = `5432`, Username/DB from your `.env`
+
+### Step 6 — Start the frontend
+
+```bash
+cd frontend
+npm install
+npm run dev
+# → http://localhost:3000
+```
+
+### Step 7 — Start the backend (coming soon)
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+# → http://localhost:8000
+```
+
+> See [docs/database.md](docs/database.md) for full database management guide.
 
 ---
 
