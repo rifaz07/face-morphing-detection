@@ -1,6 +1,8 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/shared/providers";
+import { Navbar } from "@/components/layout/navbar";
+import { Footer } from "@/components/layout/footer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,7 +17,7 @@ const geistMono = Geist_Mono({
 export const metadata = {
   title: {
     default: "Face Morphing Detection System",
-    template: "%s | Face Morphing Detection",
+    template: "%s | FaceGuard",
   },
   description:
     "Detect morphed face images in real-time using an AI-powered LBP + DCT + K-Means clustering pipeline. Protect biometric systems from face morphing attacks.",
@@ -35,7 +37,7 @@ export const metadata = {
     description:
       "Real-time detection of morphed face images using clustering-based ML pipeline.",
     url: "https://face-morphing-detection.vercel.app",
-    siteName: "Face Morphing Detection",
+    siteName: "FaceGuard",
     locale: "en_US",
     type: "website",
   },
@@ -45,15 +47,7 @@ export const metadata = {
     description:
       "Real-time detection of morphed face images using clustering-based ML pipeline.",
   },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      "max-image-preview": "large",
-    },
-  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }) {
@@ -64,7 +58,11 @@ export default function RootLayout({ children }) {
       className={`${geistSans.variable} ${geistMono.variable}`}
     >
       <body className="antialiased min-h-screen bg-background text-foreground">
-        <Providers>{children}</Providers>
+        <Providers>
+          <Navbar />
+          {children}
+          <Footer />
+        </Providers>
       </body>
     </html>
   );
