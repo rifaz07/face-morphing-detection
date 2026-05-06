@@ -1,0 +1,269 @@
+# CLAUDE.md — Face Morphing Detection System
+
+This file is the canonical project context for all Claude Code sessions. Read it fully before taking any action.
+
+---
+
+## PROJECT OVERVIEW
+
+**Name:** Clustering Based Face Morphing Detection System
+**Goal:** Production-grade web application that detects whether an uploaded face image is REAL or MORPHED using a clustering-based ML pipeline (LBP + DCT features + K-Means clustering).
+**Type:** Final-year project built to SaaS production standards — not a college demo.
+
+---
+
+## TECH STACK (STRICTLY FOLLOW — DO NOT SUBSTITUTE)
+
+### Frontend
+- Next.js 15 (App Router, **JavaScript — NOT TypeScript**)
+- Tailwind CSS v4
+- shadcn/ui components
+- React Dropzone (image uploads)
+- Recharts (metrics visualization)
+- Axios (API calls)
+- React Hook Form + Zod (form validation)
+- Framer Motion (animations)
+- next-themes (dark/light mode)
+- Sonner (toast notifications)
+- Lucide React (icons)
+- @vercel/analytics
+
+### Backend (ML API)
+- FastAPI (Python 3.11+)
+- OpenCV, NumPy, scikit-learn, scikit-image
+- Pillow, Joblib
+- Pydantic v2
+- Uvicorn server
+
+### Database
+- PostgreSQL via Supabase
+- Prisma ORM (Next.js side)
+- SQLAlchemy (FastAPI side)
+
+### Storage
+- Cloudinary (image uploads + CDN delivery)
+
+### Authentication
+- Clerk (Google + email login)
+
+### Deployment
+- Frontend → Vercel
+- Backend → Render (Dockerized)
+- Database → Supabase
+
+### DevOps
+- Docker + docker-compose
+- GitHub Actions (CI/CD)
+- Sentry (error tracking)
+- ESLint + Prettier + Husky (pre-commit hooks)
+- Conventional Commits
+
+---
+
+## PROJECT STRUCTURE
+
+```
+face-morphing-detection/
+├── frontend/              → Next.js 15 app
+├── backend/               → FastAPI ML API
+├── ml/                    → Training scripts, notebooks, model artifacts
+├── .github/workflows/     → CI/CD pipelines
+├── docker-compose.yml
+├── CLAUDE.md              → Project context for Claude
+├── README.md
+└── .gitignore
+```
+
+---
+
+## GIT BRANCHING STRATEGY (MANDATORY — ENFORCE ON EVERY TASK)
+
+### Main Branches
+| Branch    | Purpose                                  |
+|-----------|------------------------------------------|
+| `main`    | Production-ready code (auto-deploys)     |
+| `develop` | Integration branch                        |
+
+### Supporting Branch Prefixes
+| Prefix         | Use case                              |
+|----------------|---------------------------------------|
+| `feature/<name>` | New features                        |
+| `fix/<name>`     | Bug fixes                           |
+| `hotfix/<name>`  | Urgent production patches           |
+| `chore/<name>`   | Configs, deps, refactors            |
+| `docs/<name>`    | Documentation only                  |
+
+### Rules (Follow Strictly for Every Task)
+1. For every new feature/module requested, create a **new branch from `develop`**.
+2. Branch naming: `feature/<short-kebab-name>` (e.g., `feature/landing-page`)
+3. After completing the feature:
+   - Stage and commit with a Conventional Commit message
+   - Push the branch to remote
+   - **DO NOT merge to develop or main automatically**
+   - Report the branch name and ask for approval before merging
+4. Use `fix/<name>` for bug fixes, `chore/<name>` for configs, `docs/<name>` for docs.
+5. Always run `git status` before committing to confirm changes.
+6. **NEVER force push. NEVER commit directly to main.**
+7. Only the FIRST setup task may commit directly to develop. After that, ALL work goes through feature branches.
+
+### Commit Message Format (Conventional Commits)
+```
+feat: add LBP feature extraction module
+fix: resolve CORS error in upload endpoint
+chore: configure husky pre-commit hooks
+docs: update API documentation
+refactor: simplify K-means clustering logic
+style: format code with prettier
+test: add unit tests for face detection
+```
+
+---
+
+## ML PIPELINE (8 MODULES — BUILD ONE AT A TIME)
+
+| # | Module                        | Description                                              |
+|---|-------------------------------|----------------------------------------------------------|
+| 1 | Image Input & Validation      | Accept image, validate format/size/dimensions            |
+| 2 | Face Detection                | OpenCV Haar Cascade to detect and crop face region       |
+| 3 | Preprocessing                 | Resize to 128×128, grayscale, normalize pixel values     |
+| 4 | LBP Feature Extraction        | Local Binary Pattern texture features                    |
+| 5 | DCT Feature Extraction        | Discrete Cosine Transform frequency features             |
+| 6 | Feature Fusion                | Concatenate LBP + DCT into unified feature vector        |
+| 7 | K-Means Clustering            | Cluster features into Real / Morphed groups              |
+| 8 | Classification & Evaluation   | Label assignment + Accuracy, FAR, FRR metrics            |
+
+---
+
+## WEBSITE PAGES
+
+### Public Pages
+| Route         | Description                                                        |
+|---------------|--------------------------------------------------------------------|
+| `/`           | Landing — Hero, How It Works, Features, Stats, FAQ, Footer         |
+| `/about`      | Project background, methodology, team                              |
+| `/how-it-works` | Visual pipeline of 8 ML modules with animations                  |
+| `/pricing`    | Tiered plans (Free / Pro / Enterprise — SaaS look)                 |
+| `/contact`    | Contact form                                                       |
+
+### Authenticated Pages
+| Route         | Description                                                        |
+|---------------|--------------------------------------------------------------------|
+| `/dashboard`  | User overview, quick stats, recent uploads                         |
+| `/detect`     | Drag & drop upload + result display + confidence score             |
+| `/history`    | Past uploads with filters (date, result type)                      |
+| `/analytics`  | Charts (Accuracy, FAR, FRR) — Admin only                          |
+| `/settings`   | Profile management                                                  |
+
+### System Pages
+- Custom 404 and 500 error pages
+- Loading skeletons everywhere
+- Maintenance mode page
+
+---
+
+## DESIGN REQUIREMENTS
+
+- Modern SaaS aesthetic (Vercel / Linear / Stripe inspired)
+- Hero section with animated gradient + bold typography
+- Glassmorphism touches on cards
+- Smooth scroll animations (Framer Motion)
+- Dark / Light mode toggle (next-themes)
+- Geist or Inter font
+- Gradient accents (purple/blue palette)
+- Fully responsive (mobile-first)
+- Accessibility compliant (ARIA labels, keyboard navigation)
+- SEO optimized (metadata, OG images, sitemap.xml, robots.txt)
+- Image optimization via next/image
+- Vercel Analytics integrated
+- Toast notifications via Sonner
+- Lucide React for all icons
+- Loading skeletons (shadcn Skeleton component)
+- Empty states with illustrations
+
+---
+
+## WEB APP FEATURES
+
+- Clerk auth (Google + email)
+- Image upload via drag & drop (React Dropzone)
+- Cloudinary integration for image storage + CDN
+- Real-time prediction result display with confidence score
+- Animated result card (Real ✅ / Morphed ❌)
+- User dashboard with upload history
+- Admin dashboard with model metrics (Recharts)
+- Download detection report (PDF) — future feature
+- Responsive design (mobile + desktop)
+- Loading states, error handling, toast notifications
+
+---
+
+## CODE QUALITY RULES
+
+- Write clean, modular, production-grade code
+- Add JSDoc / docstrings to every function
+- Handle errors gracefully (try/catch, proper HTTP status codes)
+- Use environment variables for all secrets (.env.local, .env)
+- **Never hardcode API keys or secrets**
+- Add input validation everywhere (Zod on frontend, Pydantic on backend)
+- Write viva-ready code — a student should be able to explain every line
+- Add comments only where logic is non-obvious
+- **Component names:** PascalCase
+- **File names:** kebab-case for utilities, PascalCase for components
+- Follow ESLint + Prettier rules
+
+---
+
+## WORKFLOW FOR EVERY TASK (MANDATORY)
+
+1. Confirm understanding of the task in 1–2 lines
+2. Create a new git branch from `develop` (feature/fix/chore as appropriate)
+3. List the files to be created or modified **before** writing them
+4. Implement the changes
+5. Run any relevant checks (lint, type-check, test)
+6. Stage and commit with a Conventional Commit message
+7. Push the branch to remote
+8. Report: branch name, files changed, commit hash, what was built
+9. Ask: **"Ready to merge into develop?"** — wait for approval before merging
+
+---
+
+## ENVIRONMENT VARIABLES
+
+All secrets live in environment files. Never commit real values.
+
+| Variable                      | Used By       | Purpose                            |
+|-------------------------------|---------------|------------------------------------|
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Frontend | Clerk auth public key             |
+| `CLERK_SECRET_KEY`            | Frontend      | Clerk auth secret key              |
+| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | Frontend    | Clerk sign-in redirect URL         |
+| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | Frontend    | Clerk sign-up redirect URL         |
+| `DATABASE_URL`                | Frontend      | Prisma → Supabase connection string|
+| `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` | Frontend | Cloudinary cloud name            |
+| `CLOUDINARY_API_KEY`          | Frontend      | Cloudinary API key                 |
+| `CLOUDINARY_API_SECRET`       | Frontend      | Cloudinary API secret              |
+| `NEXT_PUBLIC_API_URL`         | Frontend      | FastAPI backend URL                |
+| `NEXT_PUBLIC_SENTRY_DSN`      | Frontend      | Sentry error tracking DSN          |
+| `DATABASE_URL`                | Backend       | SQLAlchemy → Supabase connection   |
+| `CLOUDINARY_CLOUD_NAME`       | Backend       | Cloudinary for backend uploads     |
+| `CLOUDINARY_API_KEY`          | Backend       | Cloudinary API key (backend)       |
+| `CLOUDINARY_API_SECRET`       | Backend       | Cloudinary API secret (backend)    |
+| `SENTRY_DSN`                  | Backend       | Sentry DSN for FastAPI             |
+| `ALLOWED_ORIGINS`             | Backend       | CORS allowed origins               |
+
+---
+
+## DEPLOYMENT NOTES
+
+- **Frontend:** Deploy to Vercel. Connect GitHub repo, set env vars in Vercel dashboard.
+- **Backend:** Dockerized FastAPI deployed to Render. Uses `Dockerfile` in `backend/`.
+- **Database:** Supabase PostgreSQL. Connection string goes into `DATABASE_URL`.
+- **CI/CD:** GitHub Actions workflows in `.github/workflows/`. Run lint + tests on PR.
+
+---
+
+## REPOSITORY INFO
+
+- **Remote:** https://github.com/rifaz07/face-morphing-detection.git
+- **Default branch:** main
+- **Integration branch:** develop
+- **Git user:** rifaz shaikh razak
