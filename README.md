@@ -164,15 +164,34 @@ npm run dev
 # → http://localhost:3000
 ```
 
-### Step 7 — Start the backend (coming soon)
+### Step 7 — Start the backend
+
+The backend runs inside Docker alongside PostgreSQL.
 
 ```bash
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-# → http://localhost:8000
+# Build and start (first run takes 5–10 min — downloads OpenCV/sklearn)
+docker compose up -d --build backend
+
+# View logs
+docker compose logs -f backend
+
+# Verify the container is healthy
+docker ps
 ```
 
+API endpoints:
+| URL | Description |
+|-----|-------------|
+| http://localhost:8000/docs | Swagger UI (interactive API explorer) |
+| http://localhost:8000/redoc | ReDoc documentation |
+| http://localhost:8000/api/v1/health | Health check (status + DB connectivity) |
+
+To run pytest inside the container:
+```bash
+docker exec fmd-backend pytest
+```
+
+> See [backend/README.md](backend/README.md) for the full backend development guide.
 > See [docs/database.md](docs/database.md) for full database management guide.
 
 ---
@@ -182,10 +201,11 @@ uvicorn app.main:app --reload
 | Phase | Description                                        | Status        |
 |-------|----------------------------------------------------|---------------|
 | 1     | Project setup, structure, CI/CD scaffolding        | ✅ Complete   |
-| 2     | Next.js frontend (Landing, Auth, Dashboard)        | 🔄 In Progress |
-| 3     | FastAPI backend + ML pipeline (8 modules)          | Planned       |
-| 4     | Database integration, history, analytics           | Planned       |
-| 5     | Docker, deployment (Vercel + Render), Sentry       | Planned       |
+| 2     | Next.js frontend — all public pages                | ✅ Complete   |
+| 3     | FastAPI backend scaffold + Docker integration      | ✅ Complete   |
+| 4     | ML pipeline (8 modules) + detection endpoint       | Planned       |
+| 5     | Database integration, history, analytics           | Planned       |
+| 6     | Auth (Clerk), dashboard, deployment                | Planned       |
 
 ---
 
