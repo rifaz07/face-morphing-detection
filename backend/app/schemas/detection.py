@@ -147,6 +147,55 @@ class PreprocessingResponse(BaseModel):
     )
 
 
+class LBPResult(BaseModel):
+    """Result of the Module 4 LBP feature extraction pass."""
+
+    feature_vector: list[float] = Field(
+        description=(
+            "Normalised histogram of LBP codes — 59 float values summing to 1.0. "
+            "This is the texture fingerprint used by the clustering module."
+        ),
+        examples=[[0.012, 0.034, 0.001]],
+    )
+    feature_vector_length: int = Field(
+        description="Length of the feature vector (59 for uniform LBP with N=8, R=1).",
+        examples=[59],
+    )
+    lbp_image_b64: str = Field(
+        description="Base64-encoded JPEG of the LBP-transformed image — useful for visualisation.",
+        examples=["<base64-string>"],
+    )
+    histogram_stats: dict = Field(
+        description="Descriptive statistics of the feature vector: mean, std, max_bin, min_bin, max_value, min_value.",
+        examples=[{"mean": 0.017, "std": 0.031, "max_bin": 58, "min_bin": 3, "max_value": 0.21, "min_value": 0.0}],
+    )
+    processing_time_ms: float = Field(
+        description="Wall-clock time for the extraction pass in milliseconds.",
+        examples=[5.1],
+    )
+    method: str = Field(
+        description="LBP variant — always 'uniform'.",
+        examples=["uniform"],
+    )
+    radius: int = Field(description="Neighbourhood radius.", examples=[1])
+    n_points: int = Field(description="Number of neighbour points.", examples=[8])
+
+
+class LBPResponse(BaseModel):
+    """Response schema for POST /api/v1/detection/extract-lbp."""
+
+    detection: FaceDetectionResponse = Field(
+        description="Full face detection result (Modules 1+2+3).",
+    )
+    lbp: Optional[LBPResult] = Field(
+        default=None,
+        description=(
+            "LBP feature extraction result for the largest detected face. "
+            "Null when no face was found."
+        ),
+    )
+
+
 class DetectionErrorResponse(BaseModel):
     """Returned on 400 / 422 errors from detection endpoints."""
 

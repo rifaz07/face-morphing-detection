@@ -87,12 +87,21 @@ app/
 |---|--------|--------|---------|
 | 1 | Image Validation | ✅ Complete | `POST /api/v1/detection/validate` |
 | 2 | Face Detection — Haar Cascade | ✅ Complete | `POST /api/v1/detection/detect-face` |
-| 3 | Preprocessing (resize / grayscale / normalise) | Pending | — |
-| 4 | LBP Feature Extraction | Pending | — |
+| 3 | Preprocessing (resize / grayscale / normalise) | ✅ Complete | `POST /api/v1/detection/preprocess` |
+| 4 | LBP Feature Extraction | ✅ Complete | `POST /api/v1/detection/extract-lbp` |
 | 5 | DCT Feature Extraction | Pending | — |
 | 6 | Feature Fusion (LBP + DCT) | Pending | — |
 | 7 | K-Means Clustering | Pending | — |
 | 8 | Classification & Evaluation | Pending | — |
+
+### LBP Feature Extraction
+
+LBP (Local Binary Pattern) compares each pixel with its 8 neighbours on a
+circle of radius 1.  Each comparison yields one bit; the 8-bit code for a
+pixel represents its local texture.  Collecting a normalised histogram of
+all LBP codes (59 bins for the uniform variant) gives the **texture
+fingerprint** of the face.  Morphed images produce statistically different
+fingerprints from real images, which is what the classifier exploits.
 
 ### Example curl commands
 
@@ -102,9 +111,21 @@ curl -X POST http://localhost:8000/api/v1/detection/validate \
   -F "file=@/path/to/face.jpg"
 ```
 
-**Detect faces:**
+**Detect faces + preprocess:**
 ```bash
 curl -X POST http://localhost:8000/api/v1/detection/detect-face \
+  -F "file=@/path/to/face.jpg"
+```
+
+**Preprocess largest face (debug/demo):**
+```bash
+curl -X POST http://localhost:8000/api/v1/detection/preprocess \
+  -F "file=@/path/to/face.jpg"
+```
+
+**Extract LBP features:**
+```bash
+curl -X POST http://localhost:8000/api/v1/detection/extract-lbp \
   -F "file=@/path/to/face.jpg"
 ```
 
