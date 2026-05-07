@@ -8,5 +8,4 @@ api_router.include_router(health.router)
 api_router.include_router(
     detection.router,
     prefix="/detection",
-    tags=["Detection"],
 )
