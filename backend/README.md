@@ -89,10 +89,21 @@ app/
 | 2 | Face Detection — Haar Cascade | ✅ Complete | `POST /api/v1/detection/detect-face` |
 | 3 | Preprocessing (resize / grayscale / normalise) | ✅ Complete | `POST /api/v1/detection/preprocess` |
 | 4 | LBP Feature Extraction | ✅ Complete | `POST /api/v1/detection/extract-lbp` |
-| 5 | DCT Feature Extraction | Pending | — |
+| 5 | DCT Feature Extraction | ✅ Complete | `POST /api/v1/detection/extract-dct` |
 | 6 | Feature Fusion (LBP + DCT) | Pending | — |
 | 7 | K-Means Clustering | Pending | — |
 | 8 | Classification & Evaluation | Pending | — |
+
+### DCT Feature Extraction
+
+DCT (Discrete Cosine Transform) converts the face image from the spatial
+domain (pixels) into the frequency domain (cosine wave amplitudes).  The
+top-left 32×32 block (1024 coefficients) captures low-to-mid frequencies
+where morphing artefacts are most prominent — pixel blending introduces
+energy in mid-frequency bands not present in real faces.  Log compression
+(`sign(x) × log(1 + |x|)`) normalises the huge dynamic range of raw DCT
+values.  DCT complements LBP: LBP measures local texture patterns; DCT
+measures global frequency content.
 
 ### LBP Feature Extraction
 
@@ -126,6 +137,12 @@ curl -X POST http://localhost:8000/api/v1/detection/preprocess \
 **Extract LBP features:**
 ```bash
 curl -X POST http://localhost:8000/api/v1/detection/extract-lbp \
+  -F "file=@/path/to/face.jpg"
+```
+
+**Extract DCT features:**
+```bash
+curl -X POST http://localhost:8000/api/v1/detection/extract-dct \
   -F "file=@/path/to/face.jpg"
 ```
 

@@ -314,3 +314,69 @@ def test_extract_lbp_returns_400_for_invalid_image(
         files=[_to_upload(invalid_format_bytes, "bad.txt", "text/plain")],
     )
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/detection/extract-dct
+# ---------------------------------------------------------------------------
+
+
+def test_extract_dct_endpoint_returns_200(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/extract-dct",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "detection" in body
+    assert "dct" in body
+
+
+def test_extract_dct_feature_vector_structure(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    """When a face is found, dct must contain a 1024-element log-compressed vector."""
+    resp = client.post(
+        "/api/v1/detection/extract-dct",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    if body["detection"]["face_count"] > 0:
+        dct = body["dct"]
+        assert dct is not None
+        assert dct["feature_vector_length"] == 1024
+        assert len(dct["feature_vector"]) == 1024
+        assert dct["dct_size"] == 32
+        assert dct["normalization"] == "log_compression"
+        assert "dct_image_b64" in dct
+        assert "dct_block_stats" in dct
+
+
+def test_extract_dct_no_face_returns_null(
+    client: TestClient,
+    random_noise_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/extract-dct",
+        files=[_to_upload(random_noise_image_bytes, "noise.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["detection"]["face_count"] == 0
+    assert body["dct"] is None
+
+
+def test_extract_dct_returns_400_for_invalid_image(
+    client: TestClient,
+    invalid_format_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/extract-dct",
+        files=[_to_upload(invalid_format_bytes, "bad.txt", "text/plain")],
+    )
+    assert resp.status_code == 400
