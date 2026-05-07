@@ -9,6 +9,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import check_db_connection
 from app.core.logging import setup_logging
+from app.ml.clustering.kmeans_classifier import KMeansClassifier
 
 setup_logging()
 
@@ -21,6 +22,16 @@ async def lifespan(app: FastAPI):
         logger.info("Database connection: OK")
     else:
         logger.warning("Database connection: FAILED — running without DB")
+
+    # Module 7 — initialise K-Means classifier (auto-loads saved model or trains on synthetic data).
+    classifier = KMeansClassifier()
+    app.state.classifier = classifier
+    info = classifier.get_model_info()
+    if info.trained_on_synthetic:
+        logger.info("K-Means model trained on synthetic data | inertia={}", info.inertia)
+    else:
+        logger.info("K-Means model loaded from disk | inertia={}", info.inertia)
+
     yield
     logger.info("Shutting down application")
 

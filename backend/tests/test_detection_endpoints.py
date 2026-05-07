@@ -450,3 +450,204 @@ def test_extract_features_returns_400_for_invalid(
         files=[_to_upload(invalid_format_bytes, "bad.txt", "text/plain")],
     )
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/detection/model-info
+# ---------------------------------------------------------------------------
+
+
+def test_model_info_endpoint_returns_200(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/model-info")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["is_fitted"] is True
+    assert body["model_type"] == "KMeans"
+    assert body["n_clusters"] == 2
+    assert "cluster_labels" in body
+    assert "model_path" in body
+
+
+def test_model_info_contains_cluster_labels(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/model-info")
+    assert resp.status_code == 200
+    body = resp.json()
+    labels = set(body["cluster_labels"].values())
+    assert "REAL" in labels
+    assert "MORPHED" in labels
+
+
+def test_model_info_inertia_is_positive(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/model-info")
+    body = resp.json()
+    assert body["inertia"] is not None
+    assert body["inertia"] > 0
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/detection/retrain
+# ---------------------------------------------------------------------------
+
+
+def test_retrain_endpoint_returns_200(client: TestClient) -> None:
+    resp = client.post("/api/v1/detection/retrain")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "samples_trained" in body
+    assert "inertia" in body
+    assert "converged" in body
+    assert body["trained_on_synthetic"] is True
+
+
+def test_retrain_returns_expected_sample_count(client: TestClient) -> None:
+    resp = client.post("/api/v1/detection/retrain")
+    body = resp.json()
+    assert body["samples_trained"] == 1000  # 500 REAL + 500 MORPHED
+
+
+def test_retrain_cluster_labels_present(client: TestClient) -> None:
+    resp = client.post("/api/v1/detection/retrain")
+    body = resp.json()
+    labels = set(body["cluster_labels"].values())
+    assert "REAL" in labels
+    assert "MORPHED" in labels
+
+
+def test_retrain_inertia_positive(client: TestClient) -> None:
+    resp = client.post("/api/v1/detection/retrain")
+    body = resp.json()
+    assert body["inertia"] > 0
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/detection/classify
+# ---------------------------------------------------------------------------
+
+
+def test_classify_endpoint_returns_200(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/classify",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+
+
+def test_classify_response_has_required_fields(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/classify",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "detection" in body
+    assert "fusion" in body
+    assert "prediction" in body
+
+
+def test_classify_returns_real_or_morphed_string(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/classify",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    if body["detection"]["face_count"] > 0:
+        assert body["prediction"] is not None
+        assert body["prediction"]["prediction"] in {"REAL", "MORPHED"}
+
+
+def test_classify_returns_confidence_float(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/classify",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    if body["detection"]["face_count"] > 0:
+        conf = body["prediction"]["confidence"]
+        assert isinstance(conf, float)
+        assert 0.0 <= conf <= 1.0
+
+
+def test_classify_prediction_has_cluster_id(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/classify",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    if body["detection"]["face_count"] > 0:
+        assert body["prediction"]["cluster_id"] in {0, 1}
+
+
+def test_classify_prediction_has_distance_to_centroid(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/classify",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    if body["detection"]["face_count"] > 0:
+        assert body["prediction"]["distance_to_centroid"] >= 0.0
+
+
+def test_classify_no_face_returns_null_prediction(
+    client: TestClient,
+    random_noise_image_bytes: bytes,
+) -> None:
+    """No face in image → prediction must be null (not an error)."""
+    resp = client.post(
+        "/api/v1/detection/classify",
+        files=[_to_upload(random_noise_image_bytes, "noise.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["detection"]["face_count"] == 0
+    assert body["prediction"] is None
+    assert body["fusion"] is None
+
+
+def test_classify_returns_400_for_invalid_image(
+    client: TestClient,
+    invalid_format_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/classify",
+        files=[_to_upload(invalid_format_bytes, "bad.txt", "text/plain")],
+    )
+    assert resp.status_code == 400
+
+
+def test_classify_fusion_vector_present_when_face_found(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/classify",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    if body["detection"]["face_count"] > 0:
+        fusion = body["fusion"]
+        assert fusion is not None
+        assert fusion["fused_vector_length"] == 1083
+        assert len(fusion["fused_vector"]) == 1083

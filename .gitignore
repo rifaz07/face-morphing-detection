@@ -64,6 +64,8 @@ htmlcov/
 *.safetensors
 ml/artifacts/
 backend/ml/models/
+backend/app/ml/models/*.joblib
+backend/app/ml/models/*.pkl
 
 # ============================================================
 # Logs
