@@ -196,6 +196,57 @@ class LBPResponse(BaseModel):
     )
 
 
+class DCTResult(BaseModel):
+    """Result of the Module 5 DCT feature extraction pass."""
+
+    feature_vector: list[float] = Field(
+        description=(
+            "Log-compressed 32×32 DCT coefficients flattened to 1024 floats. "
+            "Captures low-to-mid frequency content of the face."
+        ),
+        examples=[[8.12, 3.45, -1.02]],
+    )
+    feature_vector_length: int = Field(
+        description="Length of the feature vector — always 1024 (32×32 block).",
+        examples=[1024],
+    )
+    dct_image_b64: str = Field(
+        description="Base64-encoded JPEG of the full log-scaled DCT coefficient map.",
+        examples=["<base64-string>"],
+    )
+    dct_block_stats: dict = Field(
+        description="Statistics of the raw 32×32 DCT block: mean, std, energy, max, min.",
+        examples=[{"mean": 120.5, "std": 300.1, "energy": 1234567.8, "max": 4200.0, "min": -15.3}],
+    )
+    processing_time_ms: float = Field(
+        description="Wall-clock time for the extraction pass in milliseconds.",
+        examples=[4.8],
+    )
+    dct_size: int = Field(
+        description="Side length of the extracted DCT block (32).",
+        examples=[32],
+    )
+    normalization: str = Field(
+        description="Normalisation method applied — always 'log_compression'.",
+        examples=["log_compression"],
+    )
+
+
+class DCTResponse(BaseModel):
+    """Response schema for POST /api/v1/detection/extract-dct."""
+
+    detection: FaceDetectionResponse = Field(
+        description="Full face detection result (Modules 1+2+3).",
+    )
+    dct: Optional[DCTResult] = Field(
+        default=None,
+        description=(
+            "DCT feature extraction result for the largest detected face. "
+            "Null when no face was found."
+        ),
+    )
+
+
 class DetectionErrorResponse(BaseModel):
     """Returned on 400 / 422 errors from detection endpoints."""
 

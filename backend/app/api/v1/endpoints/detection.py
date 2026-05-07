@@ -1,10 +1,11 @@
 """
-Detection API endpoints — Modules 1, 2, 3 & 4.
+Detection API endpoints — Modules 1, 2, 3, 4 & 5.
 
 POST /api/v1/detection/validate     → Image validation pre-flight (Module 1)
 POST /api/v1/detection/detect-face  → Validate + detect + preprocess (Modules 1+2+3)
 POST /api/v1/detection/preprocess   → Full pipeline, returns preprocessing detail (Modules 1+2+3)
 POST /api/v1/detection/extract-lbp  → Full pipeline + LBP texture features (Modules 1+2+3+4)
+POST /api/v1/detection/extract-dct  → Full pipeline + DCT frequency features (Modules 1+2+3+5)
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
@@ -12,10 +13,13 @@ from loguru import logger
 
 from app.ml.detectors.face_detector import FaceDetector
 from app.ml.exceptions import ImageProcessingError, InvalidImageError
+from app.ml.feature_extractors.dct_extractor import DCTExtractor
 from app.ml.feature_extractors.lbp_extractor import LBPExtractor
 from app.ml.preprocessors.image_preprocessor import ImagePreprocessor
 from app.ml.validators.image_validator import ImageValidator
 from app.schemas.detection import (
+    DCTResponse,
+    DCTResult,
     DetectionErrorResponse,
     FaceBoundingBox,
     FaceDetectionResponse,
@@ -33,6 +37,7 @@ _validator = ImageValidator()
 _detector = FaceDetector()
 _preprocessor = ImagePreprocessor()
 _lbp_extractor = LBPExtractor()
+_dct_extractor = DCTExtractor()
 
 
 # ---------------------------------------------------------------------------
@@ -412,3 +417,96 @@ async def extract_lbp(file: UploadFile) -> LBPResponse:
     )
 
     return LBPResponse(detection=detection_response, lbp=lbp_result)
+
+
+# ---------------------------------------------------------------------------
+# POST /extract-dct  (Modules 1 + 2 + 3 + 5)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/extract-dct",
+    response_model=DCTResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Extract DCT frequency features from the largest detected face",
+    description=(
+        "Runs the full Modules 1 → 2 → 3 → 5 pipeline: validates the image, "
+        "detects faces, preprocesses, then applies a 2D DCT and extracts the "
+        "top-left 32×32 block (1024 coefficients) with log compression. "
+        "DCT frequency analysis complements LBP texture analysis — morphing "
+        "artefacts appear in the mid-frequency range captured by this block. "
+        "Returns null dct field when no face is found."
+    ),
+    responses={
+        200: {"description": "Detection result + DCT feature vector for the largest face"},
+        400: {
+            "model": DetectionErrorResponse,
+            "description": "Image failed validation",
+        },
+        422: {
+            "model": DetectionErrorResponse,
+            "description": "Valid image but ML processing failed",
+        },
+    },
+    tags=["Detection"],
+)
+async def extract_dct(file: UploadFile) -> DCTResponse:
+    """
+    Full pipeline: validate → detect → preprocess → extract DCT (Modules 1+2+3+5).
+
+    Returns :class:`DCTResponse` with:
+    - **detection** — face detection result including preprocessed crops
+    - **dct** — 1024-element log-compressed DCT feature vector for the
+      largest face, or null if no face detected
+    """
+    file_bytes = await file.read()
+    filename = file.filename or "upload"
+
+    # Modules 1 + 2
+    _read_validate(file_bytes, filename)
+    detection = _run_detection(file_bytes)
+
+    # Module 3 — preprocess all crops
+    preprocessed_all = _preprocess_crops(detection.cropped_faces_b64)
+    detection_response = _build_detection_response(detection, preprocessed_all)
+
+    if not detection.largest_face or not detection.cropped_faces_b64:
+        return DCTResponse(detection=detection_response, dct=None)
+
+    # Identify the crop for the largest face
+    largest_area = detection.largest_face.area
+    largest_index = 0
+    for i, box in enumerate(detection.faces):
+        if box.area == largest_area:
+            largest_index = i
+            break
+
+    # Module 5 — extract DCT from the preprocessed float32 array
+    try:
+        largest_crop_bytes = __import__("base64").b64decode(
+            detection.cropped_faces_b64[largest_index]
+        )
+        normalized_array = _preprocessor.get_normalized_array(largest_crop_bytes)
+        dct_result_raw = _dct_extractor.extract(normalized_array)
+    except ImageProcessingError as exc:
+        logger.error("DCT extraction failed: {}", exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=DetectionErrorResponse(
+                error_code="DCT_EXTRACTION_ERROR",
+                message=str(exc),
+                details=exc.details,
+            ).model_dump(),
+        )
+
+    dct_result = DCTResult(
+        feature_vector=dct_result_raw.feature_vector,
+        feature_vector_length=dct_result_raw.feature_vector_length,
+        dct_image_b64=dct_result_raw.dct_image_b64,
+        dct_block_stats=dct_result_raw.dct_block_stats,
+        processing_time_ms=dct_result_raw.processing_time_ms,
+        dct_size=dct_result_raw.dct_size,
+        normalization=dct_result_raw.normalization,
+    )
+
+    return DCTResponse(detection=detection_response, dct=dct_result)
