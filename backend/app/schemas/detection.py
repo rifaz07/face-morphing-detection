@@ -334,3 +334,141 @@ class DetectionErrorResponse(BaseModel):
         description="Additional structured context (validation errors, etc.).",
         examples=[{"errors": ["File size 12.3 MB exceeds the 10 MB limit."]}],
     )
+
+
+# ---------------------------------------------------------------------------
+# Module 7 — K-Means Clustering schemas
+# ---------------------------------------------------------------------------
+
+
+class KMeansPredictionResult(BaseModel):
+    """Result of the Module 7 K-Means classification step for a single face."""
+
+    prediction: str = Field(
+        description="Classification outcome — 'REAL' or 'MORPHED'.",
+        examples=["REAL"],
+    )
+    confidence: float = Field(
+        description=(
+            "Confidence in [0.0, 1.0] based on distance to cluster centroid. "
+            "1.0 = on the centroid; ~0.5 = at the average cluster radius; "
+            "near 0.0 = far from the cluster."
+        ),
+        examples=[0.872],
+    )
+    cluster_id: int = Field(
+        description="Raw K-Means cluster assignment (0 or 1).",
+        examples=[0],
+    )
+    distance_to_centroid: float = Field(
+        description="Euclidean distance from the feature vector to its assigned centroid.",
+        examples=[1.2345],
+    )
+    processing_time_ms: float = Field(
+        description="Wall-clock time for the K-Means prediction step.",
+        examples=[0.8],
+    )
+
+
+class KMeansTrainingResult(BaseModel):
+    """Result of training (or retraining) the K-Means model."""
+
+    samples_trained: int = Field(
+        description="Total number of feature vectors used for training.",
+        examples=[1000],
+    )
+    inertia: float = Field(
+        description="Within-cluster sum of squared distances (lower is better).",
+        examples=[12345.67],
+    )
+    iterations: int = Field(
+        description="Number of K-Means iterations until convergence.",
+        examples=[12],
+    )
+    converged: bool = Field(
+        description="True when K-Means converged before max_iter was reached.",
+        examples=[True],
+    )
+    cluster_labels: dict = Field(
+        description="Mapping of cluster IDs to semantic labels, e.g. {0: 'REAL', 1: 'MORPHED'}.",
+        examples=[{"0": "REAL", "1": "MORPHED"}],
+    )
+    silhouette_score: Optional[float] = Field(
+        default=None,
+        description="Silhouette score [-1, 1] — how well-separated the clusters are (higher is better).",
+        examples=[0.732],
+    )
+    accuracy: Optional[float] = Field(
+        default=None,
+        description="Training accuracy when ground-truth labels were supplied (0.0–1.0).",
+        examples=[0.954],
+    )
+    trained_on_synthetic: bool = Field(
+        description="True when trained on generated synthetic data rather than real face images.",
+        examples=[True],
+    )
+    processing_time_ms: float = Field(
+        description="Total wall-clock time for the training pass.",
+        examples=[432.1],
+    )
+
+
+class KMeansModelInfo(BaseModel):
+    """Current state of the loaded K-Means model."""
+
+    is_fitted: bool = Field(
+        description="True when a trained model is available for prediction.",
+        examples=[True],
+    )
+    model_type: str = Field(
+        description="Algorithm name — always 'KMeans'.",
+        examples=["KMeans"],
+    )
+    n_clusters: int = Field(
+        description="Number of clusters (always 2: REAL and MORPHED).",
+        examples=[2],
+    )
+    cluster_labels: dict = Field(
+        description="Cluster-ID → semantic label mapping.",
+        examples=[{"0": "REAL", "1": "MORPHED"}],
+    )
+    training_samples: Optional[int] = Field(
+        default=None,
+        description="Number of samples the model was last trained on.",
+        examples=[1000],
+    )
+    inertia: Optional[float] = Field(
+        default=None,
+        description="Inertia from the last training run.",
+        examples=[12345.67],
+    )
+    trained_on_synthetic: bool = Field(
+        description="True when the model was trained on synthetic data.",
+        examples=[True],
+    )
+    model_path: str = Field(
+        description="Filesystem path where the model file is stored.",
+        examples=["/app/app/ml/models/kmeans_model.joblib"],
+    )
+
+
+class ClassifyResponse(BaseModel):
+    """Response schema for POST /api/v1/detection/classify — the main pipeline endpoint."""
+
+    detection: FaceDetectionResponse = Field(
+        description="Face detection result (Modules 1+2+3).",
+    )
+    fusion: Optional[FusionResult] = Field(
+        default=None,
+        description=(
+            "Fused 1083-dim feature vector for the largest detected face "
+            "(Modules 4+5+6), or null when no face was found."
+        ),
+    )
+    prediction: Optional[KMeansPredictionResult] = Field(
+        default=None,
+        description=(
+            "K-Means classification result (Module 7): REAL or MORPHED with "
+            "confidence score.  Null when no face was detected."
+        ),
+    )

@@ -47,11 +47,11 @@ README.md
 logs/
 *.log
 
-# ML artifacts (not baked into image)
-models/*.joblib
-models/*.pkl
-models/*.h5
-models/*.onnx
+# ML artifacts (not baked into image — trained at runtime)
+app/ml/models/*.joblib
+app/ml/models/*.pkl
+app/ml/models/*.h5
+app/ml/models/*.onnx
 
 # Environment files
 .env

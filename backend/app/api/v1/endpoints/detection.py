@@ -1,5 +1,5 @@
 """
-Detection API endpoints — Modules 1, 2, 3, 4, 5 & 6.
+Detection API endpoints — Modules 1, 2, 3, 4, 5, 6 & 7.
 
 POST /api/v1/detection/validate          → Image validation pre-flight (Module 1)
 POST /api/v1/detection/detect-face       → Validate + detect + preprocess (Modules 1+2+3)
@@ -7,9 +7,12 @@ POST /api/v1/detection/preprocess        → Full pipeline, preprocessing detail
 POST /api/v1/detection/extract-lbp       → Full pipeline + LBP texture features (Modules 1+2+3+4)
 POST /api/v1/detection/extract-dct       → Full pipeline + DCT frequency features (Modules 1+2+3+5)
 POST /api/v1/detection/extract-features  → Complete feature extraction pipeline (Modules 1–6)
+POST /api/v1/detection/classify          → MAIN: full pipeline + K-Means prediction (Modules 1–7)
+GET  /api/v1/detection/model-info        → K-Means model status and metadata
+POST /api/v1/detection/retrain           → Retrain K-Means on synthetic data
 """
 
-from fastapi import APIRouter, HTTPException, UploadFile, status
+from fastapi import APIRouter, HTTPException, Request, UploadFile, status
 from loguru import logger
 
 from app.ml.detectors.face_detector import FaceDetector
@@ -20,6 +23,7 @@ from app.ml.feature_extractors.lbp_extractor import LBPExtractor
 from app.ml.preprocessors.image_preprocessor import ImagePreprocessor
 from app.ml.validators.image_validator import ImageValidator
 from app.schemas.detection import (
+    ClassifyResponse,
     DCTResponse,
     DCTResult,
     DetectionErrorResponse,
@@ -28,6 +32,9 @@ from app.schemas.detection import (
     FusionResponse,
     FusionResult,
     ImageValidationResponse,
+    KMeansModelInfo,
+    KMeansPredictionResult,
+    KMeansTrainingResult,
     LBPResponse,
     LBPResult,
     PreprocessingResponse,
@@ -646,4 +653,220 @@ async def extract_features(file: UploadFile) -> FusionResponse:
         lbp=lbp_result,
         dct=dct_result,
         fusion=fusion_result,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /classify  (Modules 1 → 7 — MAIN ENDPOINT)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/classify",
+    response_model=ClassifyResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Classify a face image as REAL or MORPHED (complete pipeline, Modules 1–7)",
+    description=(
+        "The primary detection endpoint. Runs the complete pipeline: "
+        "validates the image (Module 1) → detects faces with Haar Cascade "
+        "(Module 2) → preprocesses the largest face (Module 3) → extracts "
+        "LBP texture features (Module 4) → extracts DCT frequency features "
+        "(Module 5) → fuses into a 1083-dim vector (Module 6) → classifies "
+        "with K-Means (Module 7). "
+        "Returns REAL or MORPHED with a confidence score in [0, 1]. "
+        "Always returns HTTP 200 — a MORPHED result is a valid detection, "
+        "not an error. Returns null prediction when no face is detected."
+    ),
+    responses={
+        200: {"description": "Classification result — REAL or MORPHED with confidence"},
+        400: {"model": DetectionErrorResponse, "description": "Image failed validation"},
+        422: {"model": DetectionErrorResponse, "description": "ML processing error"},
+    },
+    tags=["Detection"],
+)
+async def classify_image(request: Request, file: UploadFile) -> ClassifyResponse:
+    """
+    Complete pipeline Modules 1–7: validate → detect → preprocess → LBP →
+    DCT → fuse → K-Means classify.
+
+    Returns :class:`ClassifyResponse` with:
+    - **detection** — face detection result (bounding boxes, preprocessing)
+    - **fusion**    — 1083-dim fused feature vector for the largest face
+    - **prediction** — REAL / MORPHED label + confidence score, or null
+    """
+    import base64 as _base64
+
+    file_bytes = await file.read()
+    filename = file.filename or "upload"
+
+    # Modules 1 + 2
+    _read_validate(file_bytes, filename)
+    detection = _run_detection(file_bytes)
+
+    # Module 3
+    preprocessed_all = _preprocess_crops(detection.cropped_faces_b64)
+    detection_response = _build_detection_response(detection, preprocessed_all)
+
+    if not detection.largest_face or not detection.cropped_faces_b64:
+        return ClassifyResponse(detection=detection_response, fusion=None, prediction=None)
+
+    # Identify the largest-face crop index
+    largest_area = detection.largest_face.area
+    largest_index = 0
+    for i, box in enumerate(detection.faces):
+        if box.area == largest_area:
+            largest_index = i
+            break
+
+    try:
+        largest_crop_bytes = _base64.b64decode(detection.cropped_faces_b64[largest_index])
+        normalized_array = _preprocessor.get_normalized_array(largest_crop_bytes)
+
+        # Modules 4 + 5
+        lbp_raw = _lbp_extractor.extract(normalized_array)
+        dct_raw = _dct_extractor.extract(normalized_array)
+
+        # Module 6 — fuse
+        fusion_raw = _feature_fusion.fuse(lbp_raw.feature_vector, dct_raw.feature_vector)
+    except ImageProcessingError as exc:
+        logger.error("Feature extraction failed during classify: {}", exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=DetectionErrorResponse(
+                error_code="FEATURE_EXTRACTION_ERROR",
+                message=str(exc),
+                details=exc.details,
+            ).model_dump(),
+        )
+
+    fusion_result = FusionResult(
+        fused_vector=fusion_raw.fused_vector,
+        fused_vector_length=fusion_raw.fused_vector_length,
+        lbp_contribution=fusion_raw.lbp_contribution,
+        dct_contribution=fusion_raw.dct_contribution,
+        lbp_stats=fusion_raw.lbp_stats,
+        dct_stats=fusion_raw.dct_stats,
+        fused_stats=fusion_raw.fused_stats,
+        processing_time_ms=fusion_raw.processing_time_ms,
+        fusion_method=fusion_raw.fusion_method,
+        normalization_applied=fusion_raw.normalization_applied,
+    )
+
+    # Module 7 — K-Means classify
+    classifier = request.app.state.classifier
+    try:
+        pred_raw = classifier.predict(fusion_raw.fused_vector)
+    except ImageProcessingError as exc:
+        logger.error("K-Means prediction failed: {}", exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=DetectionErrorResponse(
+                error_code="CLASSIFICATION_ERROR",
+                message=str(exc),
+                details=exc.details,
+            ).model_dump(),
+        )
+
+    prediction_result = KMeansPredictionResult(
+        prediction=pred_raw.prediction,
+        confidence=pred_raw.confidence,
+        cluster_id=pred_raw.cluster_id,
+        distance_to_centroid=pred_raw.distance_to_centroid,
+        processing_time_ms=pred_raw.processing_time_ms,
+    )
+
+    logger.info(
+        "classify | file={} prediction={} confidence={:.3f}",
+        filename, prediction_result.prediction, prediction_result.confidence,
+    )
+
+    return ClassifyResponse(
+        detection=detection_response,
+        fusion=fusion_result,
+        prediction=prediction_result,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /model-info
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/model-info",
+    response_model=KMeansModelInfo,
+    status_code=status.HTTP_200_OK,
+    summary="Get K-Means model metadata",
+    description=(
+        "Returns the current state of the K-Means classifier: whether it is "
+        "fitted, the cluster-label mapping, inertia, training sample count, "
+        "and whether it was trained on synthetic or real data."
+    ),
+    tags=["Detection"],
+)
+async def model_info(request: Request) -> KMeansModelInfo:
+    """Return metadata about the loaded K-Means model."""
+    classifier = request.app.state.classifier
+    info = classifier.get_model_info()
+    return KMeansModelInfo(
+        is_fitted=info.is_fitted,
+        model_type=info.model_type,
+        n_clusters=info.n_clusters,
+        cluster_labels=info.cluster_labels,
+        training_samples=info.training_samples,
+        inertia=info.inertia,
+        trained_on_synthetic=info.trained_on_synthetic,
+        model_path=info.model_path,
+    )
+
+
+# ---------------------------------------------------------------------------
+# POST /retrain
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/retrain",
+    response_model=KMeansTrainingResult,
+    status_code=status.HTTP_200_OK,
+    summary="Retrain the K-Means model on synthetic data",
+    description=(
+        "Triggers a fresh K-Means training run using synthetic feature vectors "
+        "(500 REAL + 500 MORPHED).  The new model immediately replaces the "
+        "current one in memory and is saved to disk.  In production, replace "
+        "the synthetic data with a real labelled face dataset."
+    ),
+    tags=["Detection"],
+)
+async def retrain_model(request: Request) -> KMeansTrainingResult:
+    """Retrain the K-Means classifier on synthetic data and return training metrics."""
+    classifier = request.app.state.classifier
+    try:
+        result = classifier._train_on_synthetic_data()
+    except ImageProcessingError as exc:
+        logger.error("Retrain failed: {}", exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=DetectionErrorResponse(
+                error_code="TRAINING_ERROR",
+                message=str(exc),
+                details=exc.details,
+            ).model_dump(),
+        )
+
+    logger.info(
+        "K-Means retrained | inertia={:.2f} acc={}",
+        result.inertia,
+        result.accuracy,
+    )
+    return KMeansTrainingResult(
+        samples_trained=result.samples_trained,
+        inertia=result.inertia,
+        iterations=result.iterations,
+        converged=result.converged,
+        cluster_labels=result.cluster_labels,
+        silhouette_score=result.silhouette_score,
+        accuracy=result.accuracy,
+        trained_on_synthetic=result.trained_on_synthetic,
+        processing_time_ms=result.processing_time_ms,
     )

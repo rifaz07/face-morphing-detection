@@ -160,7 +160,7 @@ test: add unit tests for face detection
 | 4 | LBP Feature Extraction ✅     | Local Binary Pattern texture features (59-element vector)|
 | 5 | DCT Feature Extraction ✅     | DCT frequency features, 32×32 block, log-compressed (1024)|
 | 6 | Feature Fusion ✅             | Concatenate LBP(59) + DCT_norm(1024) = 1083-dim vector   |
-| 7 | K-Means Clustering            | Cluster features into Real / Morphed groups              |
+| 7 | K-Means Clustering ✅         | K-Means (k=2) on 1083-dim vectors → REAL / MORPHED label|
 | 8 | Classification & Evaluation   | Label assignment + Accuracy, FAR, FRR metrics            |
 
 ---

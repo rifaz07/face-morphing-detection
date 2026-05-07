@@ -91,7 +91,7 @@ app/
 | 4 | LBP Feature Extraction | ✅ Complete | `POST /api/v1/detection/extract-lbp` |
 | 5 | DCT Feature Extraction | ✅ Complete | `POST /api/v1/detection/extract-dct` |
 | 6 | Feature Fusion (LBP + DCT) | ✅ Complete | `POST /api/v1/detection/extract-features` |
-| 7 | K-Means Clustering | Pending | — |
+| 7 | K-Means Clustering | ✅ Complete | `POST /api/v1/detection/classify` |
 | 8 | Classification & Evaluation | Pending | — |
 
 ### Feature Fusion (Module 6)
@@ -134,7 +134,49 @@ all LBP codes (59 bins for the uniform variant) gives the **texture
 fingerprint** of the face.  Morphed images produce statistically different
 fingerprints from real images, which is what the classifier exploits.
 
+### K-Means Clustering (Module 7)
+
+K-Means (k=2) partitions the 1083-dimensional fused feature space into two
+clusters — one for **REAL** faces and one for **MORPHED** faces.  After
+fitting, cluster labels are assigned by majority vote against ground-truth
+labels.  At inference, the sample's Euclidean distance to its assigned
+centroid is converted to a confidence score:
+
+```
+confidence = 1 / (1 + distance / mean_cluster_distance)
+```
+
+`mean_cluster_distance` is the average distance of training samples to their
+centroid, so confidence 1.0 means "on the centroid" and ~0.5 means "at the
+edge of the cluster".
+
+**Current training data:** 500 synthetic REAL + 500 synthetic MORPHED vectors
+generated at startup.  Replace with a real labelled face dataset for
+production.
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/detection/classify` | **Main endpoint** — full pipeline → REAL/MORPHED + confidence |
+| `GET  /api/v1/detection/model-info` | K-Means model state & metadata |
+| `POST /api/v1/detection/retrain` | Retrain on synthetic data |
+
 ### Example curl commands
+
+**Classify a face image (MAIN endpoint — Modules 1–7):**
+```bash
+curl -X POST http://localhost:8000/api/v1/detection/classify \
+  -F "file=@/path/to/face.jpg"
+```
+
+**Get model info:**
+```bash
+curl http://localhost:8000/api/v1/detection/model-info
+```
+
+**Retrain model:**
+```bash
+curl -X POST http://localhost:8000/api/v1/detection/retrain
+```
 
 **Validate image:**
 ```bash
