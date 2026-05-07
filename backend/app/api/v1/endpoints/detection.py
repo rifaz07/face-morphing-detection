@@ -1,8 +1,9 @@
 """
-Detection API endpoints — Modules 1 & 2.
+Detection API endpoints — Modules 1, 2 & 3.
 
-POST /api/v1/detection/validate     → Image validation pre-flight
-POST /api/v1/detection/detect-face  → Full validate + face detection pipeline
+POST /api/v1/detection/validate     → Image validation pre-flight (Module 1)
+POST /api/v1/detection/detect-face  → Validate + detect + preprocess (Modules 1+2+3)
+POST /api/v1/detection/preprocess   → Full pipeline, returns preprocessing detail (Modules 1+2+3)
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
@@ -10,19 +11,121 @@ from loguru import logger
 
 from app.ml.detectors.face_detector import FaceDetector
 from app.ml.exceptions import ImageProcessingError, InvalidImageError
+from app.ml.preprocessors.image_preprocessor import ImagePreprocessor
 from app.ml.validators.image_validator import ImageValidator
 from app.schemas.detection import (
     DetectionErrorResponse,
-    FaceDetectionResponse,
     FaceBoundingBox,
+    FaceDetectionResponse,
     ImageValidationResponse,
+    PreprocessingResponse,
+    PreprocessingResult,
 )
 
 router = APIRouter()
 
-# Module-level singletons — the Haar Cascade XML is loaded once at startup.
+# Module-level singletons — loaded once at startup.
 _validator = ImageValidator()
 _detector = FaceDetector()
+_preprocessor = ImagePreprocessor()
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
+
+
+def _read_validate(file_bytes: bytes, filename: str) -> None:
+    """Run Module 1 validation, raising HTTP 400 on failure."""
+    try:
+        result = _validator.validate(file_bytes, filename)
+    except InvalidImageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=DetectionErrorResponse(
+                error_code="INVALID_IMAGE",
+                message=str(exc),
+                details=exc.details,
+            ).model_dump(),
+        )
+    if not result.is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=DetectionErrorResponse(
+                error_code="INVALID_IMAGE",
+                message="Image failed validation.",
+                details={"errors": result.errors, "warnings": result.warnings},
+            ).model_dump(),
+        )
+
+
+def _run_detection(file_bytes: bytes):
+    """Run Module 2 detection, raising HTTP 422 on processing error."""
+    try:
+        return _detector.detect(file_bytes, strict=False)
+    except ImageProcessingError as exc:
+        logger.error("ImageProcessingError during detection: {}", exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=DetectionErrorResponse(
+                error_code="PROCESSING_ERROR",
+                message=str(exc),
+                details=exc.details,
+            ).model_dump(),
+        )
+
+
+def _preprocess_crops(crops_b64: list[str]) -> list[PreprocessingResult]:
+    """Run Module 3 on each base64 face crop, raising HTTP 422 on failure."""
+    results: list[PreprocessingResult] = []
+    for b64 in crops_b64:
+        try:
+            pr = _preprocessor.preprocess(b64)
+        except ImageProcessingError as exc:
+            logger.error("ImageProcessingError during preprocessing: {}", exc)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=DetectionErrorResponse(
+                    error_code="PREPROCESSING_ERROR",
+                    message=str(exc),
+                    details=exc.details,
+                ).model_dump(),
+            )
+        results.append(
+            PreprocessingResult(
+                preprocessed_b64=pr.preprocessed_b64,
+                numpy_array_shape=pr.numpy_array_shape,
+                steps_applied=pr.steps_applied,
+                processing_time_ms=pr.processing_time_ms,
+                original_size=pr.original_size,
+                normalized_stats=pr.normalized_stats,
+            )
+        )
+    return results
+
+
+def _build_detection_response(detection, preprocessed: list[PreprocessingResult]) -> FaceDetectionResponse:
+    return FaceDetectionResponse(
+        face_count=detection.face_count,
+        faces=[
+            FaceBoundingBox(x=f.x, y=f.y, width=f.width, height=f.height)
+            for f in detection.faces
+        ],
+        largest_face=(
+            FaceBoundingBox(
+                x=detection.largest_face.x,
+                y=detection.largest_face.y,
+                width=detection.largest_face.width,
+                height=detection.largest_face.height,
+            )
+            if detection.largest_face
+            else None
+        ),
+        cropped_faces_b64=detection.cropped_faces_b64,
+        processing_time_ms=detection.processing_time_ms,
+        image_dimensions=detection.image_dimensions,
+        preprocessed_faces=preprocessed,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +198,7 @@ async def validate_image(file: UploadFile) -> ImageValidationResponse:
 
 
 # ---------------------------------------------------------------------------
-# POST /detect-face
+# POST /detect-face  (Modules 1 + 2 + 3)
 # ---------------------------------------------------------------------------
 
 
@@ -103,99 +206,107 @@ async def validate_image(file: UploadFile) -> ImageValidationResponse:
     "/detect-face",
     response_model=FaceDetectionResponse,
     status_code=status.HTTP_200_OK,
-    summary="Detect faces in an uploaded image",
+    summary="Detect and preprocess faces in an uploaded image",
     description=(
-        "Runs the full Modules 1 → 2 pipeline: validates the image then "
-        "applies OpenCV Haar Cascade face detection. Returns bounding boxes, "
-        "the largest detected face, base64-encoded face crops, and timing "
-        "information. Returns face_count=0 (not an error) when no face is "
-        "found in a valid image."
+        "Runs the full Modules 1 → 2 → 3 pipeline: validates the image, "
+        "detects faces with Haar Cascade, then preprocesses each face crop "
+        "(resize 128×128, grayscale, histogram equalisation, normalise 0–1). "
+        "Returns bounding boxes, base64 crops, preprocessing results, and "
+        "timing information. Returns face_count=0 (not an error) when no "
+        "face is found in a valid image."
     ),
     responses={
-        200: {"description": "Detection results — face_count=0 means no face found"},
+        200: {"description": "Detection + preprocessing results — face_count=0 means no face found"},
         400: {
             "model": DetectionErrorResponse,
-            "description": "Image failed validation — correct the image and retry",
+            "description": "Image failed validation",
         },
         422: {
             "model": DetectionErrorResponse,
-            "description": "Valid image but ML processing failed unexpectedly",
+            "description": "Valid image but ML processing failed",
         },
     },
     tags=["Detection"],
 )
 async def detect_face(file: UploadFile) -> FaceDetectionResponse:
     """
-    Validate an image then detect all frontal faces using Haar Cascade.
+    Validate → detect faces → preprocess each crop (Modules 1+2+3).
 
-    Pipeline:
-    1. Read uploaded bytes.
-    2. Validate (Module 1) — 400 on failure.
-    3. Detect faces (Module 2) — 422 on processing error.
-    4. Return :class:`FaceDetectionResponse` (face_count=0 is valid, not an error).
+    Returns :class:`FaceDetectionResponse` including a
+    ``preprocessed_faces`` list with one :class:`PreprocessingResult`
+    per detected face.
     """
     file_bytes = await file.read()
     filename = file.filename or "upload"
 
-    # --- Module 1: Validate ---
-    try:
-        validation = _validator.validate(file_bytes, filename)
-    except InvalidImageError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=DetectionErrorResponse(
-                error_code="INVALID_IMAGE",
-                message=str(exc),
-                details=exc.details,
-            ).model_dump(),
-        )
+    _read_validate(file_bytes, filename)
+    detection = _run_detection(file_bytes)
+    preprocessed = _preprocess_crops(detection.cropped_faces_b64)
 
-    if not validation.is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=DetectionErrorResponse(
-                error_code="INVALID_IMAGE",
-                message="Image failed validation.",
-                details={
-                    "errors": validation.errors,
-                    "warnings": validation.warnings,
-                },
-            ).model_dump(),
-        )
+    return _build_detection_response(detection, preprocessed)
 
-    # --- Module 2: Detect faces ---
-    try:
-        detection = _detector.detect(file_bytes, strict=False)
-    except ImageProcessingError as exc:
-        logger.error("ImageProcessingError during detection: {}", exc)
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=DetectionErrorResponse(
-                error_code="PROCESSING_ERROR",
-                message=str(exc),
-                details=exc.details,
-            ).model_dump(),
-        )
 
-    return FaceDetectionResponse(
-        face_count=detection.face_count,
-        faces=[
-            FaceBoundingBox(
-                x=f.x, y=f.y, width=f.width, height=f.height
-            )
-            for f in detection.faces
-        ],
-        largest_face=(
-            FaceBoundingBox(
-                x=detection.largest_face.x,
-                y=detection.largest_face.y,
-                width=detection.largest_face.width,
-                height=detection.largest_face.height,
-            )
-            if detection.largest_face
-            else None
-        ),
-        cropped_faces_b64=detection.cropped_faces_b64,
-        processing_time_ms=detection.processing_time_ms,
-        image_dimensions=detection.image_dimensions,
+# ---------------------------------------------------------------------------
+# POST /preprocess  (Modules 1 + 2 + 3, largest face only — debug/demo)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/preprocess",
+    response_model=PreprocessingResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Preprocess the largest detected face",
+    description=(
+        "Debug / demo endpoint. Runs the full Modules 1 → 2 → 3 pipeline "
+        "and returns the preprocessing result for the *largest* detected "
+        "face only, alongside the complete detection result. "
+        "Ideal for viva demonstrations: shows the original image, the "
+        "cropped face, and the preprocessed (equalised, normalised) face "
+        "side by side."
+    ),
+    responses={
+        200: {"description": "Detection result + preprocessing detail for the largest face"},
+        400: {
+            "model": DetectionErrorResponse,
+            "description": "Image failed validation",
+        },
+        422: {
+            "model": DetectionErrorResponse,
+            "description": "Valid image but ML processing failed",
+        },
+    },
+    tags=["Detection"],
+)
+async def preprocess_face(file: UploadFile) -> PreprocessingResponse:
+    """
+    Validate → detect faces → preprocess largest face (Modules 1+2+3).
+
+    Returns :class:`PreprocessingResponse` with:
+    - **detection** — full face detection result (all faces)
+    - **preprocessing** — preprocessing detail for the largest face,
+      or null if no face was detected
+    """
+    file_bytes = await file.read()
+    filename = file.filename or "upload"
+
+    _read_validate(file_bytes, filename)
+    detection = _run_detection(file_bytes)
+
+    # Preprocess all crops for the detect field, but surface only the
+    # largest face in the dedicated preprocessing field.
+    preprocessed_all = _preprocess_crops(detection.cropped_faces_b64)
+    detection_response = _build_detection_response(detection, preprocessed_all)
+
+    largest_preprocessing: PreprocessingResult | None = None
+    if detection.largest_face and detection.cropped_faces_b64:
+        # Find the crop index that corresponds to the largest face.
+        largest_area = detection.largest_face.area
+        for i, box in enumerate(detection.faces):
+            if box.area == largest_area:
+                largest_preprocessing = preprocessed_all[i]
+                break
+
+    return PreprocessingResponse(
+        detection=detection_response,
+        preprocessing=largest_preprocessing,
     )
