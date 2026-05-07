@@ -91,6 +91,60 @@ class FaceDetectionResponse(BaseModel):
         description="Width and height of the input image.",
         examples=[{"width": 640, "height": 480}],
     )
+    preprocessed_faces: list["PreprocessingResult"] = Field(
+        default_factory=list,
+        description=(
+            "Module 3 preprocessing result for each detected face crop "
+            "(same order as `faces`). Empty list when no faces were found."
+        ),
+    )
+
+
+class PreprocessingResult(BaseModel):
+    """Result of the Module 3 preprocessing pipeline for a single face."""
+
+    preprocessed_b64: str = Field(
+        description=(
+            "Base64-encoded JPEG of the 128×128 histogram-equalised grayscale "
+            "face — suitable for rendering a before/after comparison."
+        ),
+        examples=["<base64-string>"],
+    )
+    numpy_array_shape: list[int] = Field(
+        description="Shape of the normalised float32 array, e.g. [128, 128].",
+        examples=[[128, 128]],
+    )
+    steps_applied: list[str] = Field(
+        description="Ordered list of preprocessing steps executed.",
+        examples=[["resize_128x128", "grayscale", "histogram_equalization", "normalize_0_1"]],
+    )
+    processing_time_ms: float = Field(
+        description="Wall-clock time for the preprocessing pass in milliseconds.",
+        examples=[3.2],
+    )
+    original_size: dict = Field(
+        description="Width and height of the face crop before resizing.",
+        examples=[{"width": 200, "height": 220}],
+    )
+    normalized_stats: dict = Field(
+        description="Descriptive statistics of the normalised [0,1] array: min, max, mean, std.",
+        examples=[{"min": 0.0, "max": 1.0, "mean": 0.512, "std": 0.241}],
+    )
+
+
+class PreprocessingResponse(BaseModel):
+    """Response schema for POST /api/v1/detection/preprocess."""
+
+    detection: FaceDetectionResponse = Field(
+        description="Full face detection result (Modules 1+2).",
+    )
+    preprocessing: Optional[PreprocessingResult] = Field(
+        default=None,
+        description=(
+            "Preprocessing result for the largest detected face. "
+            "Null when no face was found in the image."
+        ),
+    )
 
 
 class DetectionErrorResponse(BaseModel):
