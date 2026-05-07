@@ -26,6 +26,21 @@ class Settings(BaseSettings):
     # CORS — accepts a comma-separated string or a JSON list
     CORS_ORIGINS: str = "http://localhost:3000"
 
+    # ------------------------------------------------------------------
+    # ML Pipeline — Image Validation (Module 1)
+    # ------------------------------------------------------------------
+    MAX_IMAGE_SIZE_MB: int = 10
+    MIN_IMAGE_DIMENSION: int = 100
+    MAX_IMAGE_DIMENSION: int = 4096
+    ALLOWED_IMAGE_FORMATS: List[str] = ["JPEG", "PNG", "WEBP"]
+
+    # ------------------------------------------------------------------
+    # ML Pipeline — Face Detection / Haar Cascade (Module 2)
+    # ------------------------------------------------------------------
+    HAAR_SCALE_FACTOR: float = 1.1
+    HAAR_MIN_NEIGHBORS: int = 5
+    HAAR_MIN_FACE_SIZE: int = 30
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors(cls, value: str) -> str:

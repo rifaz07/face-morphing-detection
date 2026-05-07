@@ -81,6 +81,35 @@ app/
 
 ---
 
+## ML Pipeline Modules
+
+| # | Module | Status | Endpoint |
+|---|--------|--------|---------|
+| 1 | Image Validation | ✅ Complete | `POST /api/v1/detection/validate` |
+| 2 | Face Detection — Haar Cascade | ✅ Complete | `POST /api/v1/detection/detect-face` |
+| 3 | Preprocessing (resize / grayscale / normalise) | Pending | — |
+| 4 | LBP Feature Extraction | Pending | — |
+| 5 | DCT Feature Extraction | Pending | — |
+| 6 | Feature Fusion (LBP + DCT) | Pending | — |
+| 7 | K-Means Clustering | Pending | — |
+| 8 | Classification & Evaluation | Pending | — |
+
+### Example curl commands
+
+**Validate image:**
+```bash
+curl -X POST http://localhost:8000/api/v1/detection/validate \
+  -F "file=@/path/to/face.jpg"
+```
+
+**Detect faces:**
+```bash
+curl -X POST http://localhost:8000/api/v1/detection/detect-face \
+  -F "file=@/path/to/face.jpg"
+```
+
+---
+
 ## Adding a New Endpoint
 
 1. Create `app/api/v1/endpoints/your_endpoint.py`
