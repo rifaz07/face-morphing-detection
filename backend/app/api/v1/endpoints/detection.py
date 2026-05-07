@@ -1,15 +1,18 @@
 """
-Detection API endpoints — Modules 1, 2, 3, 4, 5, 6 & 7.
+Detection API endpoints — Modules 1–8.
 
-POST /api/v1/detection/validate          → Image validation pre-flight (Module 1)
-POST /api/v1/detection/detect-face       → Validate + detect + preprocess (Modules 1+2+3)
-POST /api/v1/detection/preprocess        → Full pipeline, preprocessing detail (Modules 1+2+3)
-POST /api/v1/detection/extract-lbp       → Full pipeline + LBP texture features (Modules 1+2+3+4)
-POST /api/v1/detection/extract-dct       → Full pipeline + DCT frequency features (Modules 1+2+3+5)
-POST /api/v1/detection/extract-features  → Complete feature extraction pipeline (Modules 1–6)
-POST /api/v1/detection/classify          → MAIN: full pipeline + K-Means prediction (Modules 1–7)
-GET  /api/v1/detection/model-info        → K-Means model status and metadata
-POST /api/v1/detection/retrain           → Retrain K-Means on synthetic data
+POST /api/v1/detection/validate            → Image validation pre-flight (Module 1)
+POST /api/v1/detection/detect-face         → Validate + detect + preprocess (Modules 1+2+3)
+POST /api/v1/detection/preprocess          → Full pipeline, preprocessing detail (Modules 1+2+3)
+POST /api/v1/detection/extract-lbp         → Full pipeline + LBP texture features (Modules 1+2+3+4)
+POST /api/v1/detection/extract-dct         → Full pipeline + DCT frequency features (Modules 1+2+3+5)
+POST /api/v1/detection/extract-features    → Complete feature extraction pipeline (Modules 1–6)
+POST /api/v1/detection/classify            → MAIN: full pipeline + K-Means prediction (Modules 1–7)
+GET  /api/v1/detection/model-info          → K-Means model status and metadata
+POST /api/v1/detection/retrain             → Retrain K-Means on synthetic data
+GET  /api/v1/detection/evaluation          → Cached evaluation report (Module 8)
+GET  /api/v1/detection/evaluation/live     → Live session statistics
+POST /api/v1/detection/evaluation/run      → Trigger fresh evaluation run
 """
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile, status
@@ -27,6 +30,8 @@ from app.schemas.detection import (
     DCTResponse,
     DCTResult,
     DetectionErrorResponse,
+    EvaluationReport,
+    EvaluationResult,
     FaceBoundingBox,
     FaceDetectionResponse,
     FusionResponse,
@@ -39,6 +44,7 @@ from app.schemas.detection import (
     LBPResult,
     PreprocessingResponse,
     PreprocessingResult,
+    SessionStats,
 )
 
 router = APIRouter()
@@ -870,3 +876,106 @@ async def retrain_model(request: Request) -> KMeansTrainingResult:
         trained_on_synthetic=result.trained_on_synthetic,
         processing_time_ms=result.processing_time_ms,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /evaluation  (Module 8 — cached report)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/evaluation",
+    response_model=EvaluationReport,
+    status_code=status.HTTP_200_OK,
+    summary="Get the cached evaluation report (Module 8)",
+    description=(
+        "Returns the evaluation report generated at server startup. "
+        "Includes Accuracy, FAR (False Acceptance Rate), FRR (False Rejection Rate), "
+        "Precision, Recall, F1 Score, and the confusion matrix — computed on 200 "
+        "synthetic test samples (100 REAL + 100 MORPHED). "
+        "Also includes plain-English interpretation of each metric and "
+        "recommendations for improving the model. "
+        "Ideal for the analytics dashboard and viva demonstration."
+    ),
+    responses={
+        200: {"description": "Evaluation report with all metrics and interpretation"},
+        503: {"description": "Startup evaluation was not available"},
+    },
+    tags=["Detection"],
+)
+async def get_evaluation(request: Request) -> EvaluationReport:
+    """Return the evaluation report cached during server startup."""
+    report = getattr(request.app.state, "evaluation_report", None)
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Evaluation report is not available. The startup evaluation may have failed.",
+        )
+    return report
+
+
+# ---------------------------------------------------------------------------
+# GET /evaluation/live  (live session stats)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/evaluation/live",
+    response_model=SessionStats,
+    status_code=status.HTTP_200_OK,
+    summary="Get live prediction statistics for the current session",
+    description=(
+        "Returns real-time statistics from /classify calls made since the server "
+        "started: total predictions, REAL vs MORPHED counts and percentages, "
+        "and the average confidence score across the session. "
+        "Useful for monitoring a live demo or tracking usage on the dashboard."
+    ),
+    tags=["Detection"],
+)
+async def get_live_stats(request: Request) -> SessionStats:
+    """Return live session prediction statistics from the in-memory history."""
+    classifier = request.app.state.classifier
+    stats = classifier.get_session_stats()
+    return SessionStats(**stats)
+
+
+# ---------------------------------------------------------------------------
+# POST /evaluation/run  (trigger fresh evaluation)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/evaluation/run",
+    response_model=EvaluationReport,
+    status_code=status.HTTP_200_OK,
+    summary="Trigger a fresh evaluation run on synthetic data",
+    description=(
+        "Runs a new evaluation pass — generates 200 synthetic test vectors "
+        "(100 REAL + 100 MORPHED), classifies them with the current K-Means model, "
+        "and returns a fresh EvaluationReport. Also updates the server-side cache "
+        "so subsequent GET /evaluation calls return the new results. "
+        "Use this after /retrain to see updated metrics."
+    ),
+    tags=["Detection"],
+)
+async def run_evaluation(request: Request) -> EvaluationReport:
+    """Run a fresh evaluation and update the cached report."""
+    evaluator = request.app.state.evaluator
+    try:
+        report = evaluator.generate_report()
+        request.app.state.evaluation_report = report
+    except Exception as exc:
+        logger.error("Evaluation run failed: {}", exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=DetectionErrorResponse(
+                error_code="EVALUATION_ERROR",
+                message=str(exc),
+                details={},
+            ).model_dump(),
+        )
+    logger.info(
+        "Fresh evaluation complete | acc={:.3f} FAR={:.3f} FRR={:.3f}",
+        report.metrics.accuracy, report.metrics.far, report.metrics.frr,
+    )
+    return report

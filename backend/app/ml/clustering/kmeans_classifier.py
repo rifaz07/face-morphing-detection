@@ -146,6 +146,7 @@ class KMeansClassifier:
         self._mean_cluster_distances: dict[int, float] = {}
         self._training_samples: int | None = None
         self._trained_on_synthetic: bool = False
+        self._prediction_history: list[dict] = []  # capped at 1000 entries
 
         self._models_dir.mkdir(parents=True, exist_ok=True)
 
@@ -323,13 +324,40 @@ class KMeansClassifier:
             cluster_id, label, distance, confidence, elapsed_ms,
         )
 
-        return PredictionResult(
+        result = PredictionResult(
             prediction=label,
             confidence=confidence,
             cluster_id=cluster_id,
             distance_to_centroid=round(distance, 4),
             processing_time_ms=round(elapsed_ms, 3),
         )
+        self._record_prediction(result)
+        return result
+
+    def get_session_stats(self) -> dict:
+        """Return live statistics from predictions made in the current session."""
+        history = self._prediction_history
+        total = len(history)
+        if total == 0:
+            return {
+                "total_predictions": 0,
+                "real_count": 0,
+                "morphed_count": 0,
+                "real_percentage": 0.0,
+                "morphed_percentage": 0.0,
+                "avg_confidence": 0.0,
+            }
+        real = sum(1 for p in history if p["prediction"] == "REAL")
+        morphed = total - real
+        avg_conf = sum(p["confidence"] for p in history) / total
+        return {
+            "total_predictions": total,
+            "real_count": real,
+            "morphed_count": morphed,
+            "real_percentage": round(real / total * 100, 2),
+            "morphed_percentage": round(morphed / total * 100, 2),
+            "avg_confidence": round(avg_conf, 4),
+        }
 
     def save_model(self) -> bool:
         """Persist the fitted K-Means model and metadata to disk."""
@@ -393,6 +421,15 @@ class KMeansClassifier:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _record_prediction(self, result: PredictionResult) -> None:
+        """Append to in-memory prediction history, capping at 1000 entries."""
+        self._prediction_history.append({
+            "prediction": result.prediction,
+            "confidence": result.confidence,
+        })
+        if len(self._prediction_history) > 1000:
+            self._prediction_history.pop(0)
 
     def _train_on_synthetic_data(self) -> TrainingResult:
         """

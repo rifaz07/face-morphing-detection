@@ -651,3 +651,130 @@ def test_classify_fusion_vector_present_when_face_found(
         assert fusion is not None
         assert fusion["fused_vector_length"] == 1083
         assert len(fusion["fused_vector"]) == 1083
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/detection/evaluation  (Module 8)
+# ---------------------------------------------------------------------------
+
+
+def test_evaluation_endpoint_returns_200(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation")
+    assert resp.status_code == 200
+
+
+def test_evaluation_has_accuracy_far_frr(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation")
+    assert resp.status_code == 200
+    body = resp.json()
+    metrics = body["metrics"]
+    assert "accuracy" in metrics
+    assert "far" in metrics
+    assert "frr" in metrics
+    assert "f1_score" in metrics
+
+
+def test_evaluation_metrics_in_valid_range(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation")
+    body = resp.json()
+    m = body["metrics"]
+    for key in ("accuracy", "far", "frr", "precision", "recall", "f1_score"):
+        assert 0.0 <= m[key] <= 1.0, f"{key} = {m[key]} is out of [0, 1]"
+
+
+def test_evaluation_has_confusion_matrix(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation")
+    body = resp.json()
+    cm = body["metrics"]["confusion_matrix"]
+    assert len(cm) == 2
+    assert len(cm[0]) == 2
+    assert len(cm[1]) == 2
+
+
+def test_evaluation_total_samples_is_200(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation")
+    body = resp.json()
+    assert body["metrics"]["total_samples"] == 200
+
+
+def test_evaluation_has_interpretation(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation")
+    body = resp.json()
+    interp = body["interpretation"]
+    assert "accuracy" in interp
+    assert "far" in interp
+    assert "frr" in interp
+
+
+def test_evaluation_has_model_info(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation")
+    body = resp.json()
+    assert body["model_info"]["type"] == "K-Means Clustering"
+    assert body["model_info"]["k"] == 2
+
+
+def test_evaluation_has_recommendations(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation")
+    body = resp.json()
+    assert isinstance(body["recommendations"], list)
+    assert len(body["recommendations"]) > 0
+
+
+def test_evaluation_data_source_is_synthetic(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation")
+    body = resp.json()
+    assert body["data_source"] == "synthetic"
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/detection/evaluation/live
+# ---------------------------------------------------------------------------
+
+
+def test_live_evaluation_endpoint_returns_200(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation/live")
+    assert resp.status_code == 200
+
+
+def test_live_stats_has_required_fields(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation/live")
+    body = resp.json()
+    assert "total_predictions" in body
+    assert "real_count" in body
+    assert "morphed_count" in body
+    assert "avg_confidence" in body
+
+
+def test_live_stats_counts_are_non_negative(client: TestClient) -> None:
+    resp = client.get("/api/v1/detection/evaluation/live")
+    body = resp.json()
+    assert body["total_predictions"] >= 0
+    assert body["real_count"] >= 0
+    assert body["morphed_count"] >= 0
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/detection/evaluation/run
+# ---------------------------------------------------------------------------
+
+
+def test_evaluation_run_endpoint_returns_200(client: TestClient) -> None:
+    resp = client.post("/api/v1/detection/evaluation/run")
+    assert resp.status_code == 200
+
+
+def test_evaluation_run_returns_fresh_metrics(client: TestClient) -> None:
+    resp = client.post("/api/v1/detection/evaluation/run")
+    body = resp.json()
+    assert "metrics" in body
+    assert body["metrics"]["total_samples"] == 200
+
+
+def test_evaluation_run_updates_cache(client: TestClient) -> None:
+    """After /run, GET /evaluation should return the new timestamp."""
+    run_resp = client.post("/api/v1/detection/evaluation/run")
+    get_resp = client.get("/api/v1/detection/evaluation")
+    assert run_resp.status_code == 200
+    assert get_resp.status_code == 200
+    # Both should have the same total_samples
+    assert run_resp.json()["metrics"]["total_samples"] == get_resp.json()["metrics"]["total_samples"]

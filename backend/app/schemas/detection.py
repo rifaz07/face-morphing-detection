@@ -472,3 +472,96 @@ class ClassifyResponse(BaseModel):
             "confidence score.  Null when no face was detected."
         ),
     )
+
+
+# ---------------------------------------------------------------------------
+# Module 8 — Evaluation schemas
+# ---------------------------------------------------------------------------
+
+
+class EvaluationResult(BaseModel):
+    """All binary-classification metrics for one evaluation run."""
+
+    accuracy: float = Field(
+        description="(TP+TN)/(TP+TN+FP+FN) — overall proportion of correct predictions.",
+        examples=[0.847],
+    )
+    far: float = Field(
+        description=(
+            "False Acceptance Rate = FP/(FP+TN). "
+            "Fraction of MORPHED faces incorrectly accepted as REAL. "
+            "Primary security metric — lower is better."
+        ),
+        examples=[0.142],
+    )
+    frr: float = Field(
+        description=(
+            "False Rejection Rate = FN/(FN+TP). "
+            "Fraction of REAL faces incorrectly rejected as MORPHED. "
+            "Affects user experience — lower is better."
+        ),
+        examples=[0.168],
+    )
+    precision: float = Field(
+        description="TP/(TP+FP) — of all REAL predictions, fraction that are actually REAL.",
+        examples=[0.856],
+    )
+    recall: float = Field(
+        description="TP/(TP+FN) — of all actual REAL faces, fraction correctly accepted.",
+        examples=[0.832],
+    )
+    f1_score: float = Field(
+        description="Harmonic mean of precision and recall — balances both metrics.",
+        examples=[0.844],
+    )
+    confusion_matrix: list[list[int]] = Field(
+        description=(
+            "[[TN, FP], [FN, TP]] — rows=actual (MORPHED, REAL), cols=predicted (REAL, MORPHED). "
+            "FP (top-right) drives FAR; FN (bottom-left) drives FRR."
+        ),
+        examples=[[[86, 14], [17, 83]]],
+    )
+    total_samples: int = Field(description="Total number of test samples.", examples=[200])
+    correct_predictions: int = Field(description="TP + TN — number of correct predictions.", examples=[169])
+    tp: int = Field(description="True Positives — REAL faces correctly accepted.", examples=[83])
+    tn: int = Field(description="True Negatives — MORPHED faces correctly rejected.", examples=[86])
+    fp: int = Field(description="False Positives — MORPHED faces incorrectly accepted.", examples=[14])
+    fn: int = Field(description="False Negatives — REAL faces incorrectly rejected.", examples=[17])
+    evaluation_time_ms: float = Field(description="Wall-clock time for the evaluation pass.", examples=[45.2])
+
+
+class EvaluationReport(BaseModel):
+    """Full viva-ready evaluation report."""
+
+    metrics: EvaluationResult = Field(description="All computed classification metrics.")
+    model_info: dict = Field(
+        description="Model type, k value, feature dimensions, and training data details.",
+        examples=[{
+            "type": "K-Means Clustering",
+            "k": 2,
+            "features": "LBP (59) + DCT (1024) = 1083 dimensions",
+            "training_data": "Synthetic (500 REAL + 500 MORPHED samples)",
+        }],
+    )
+    interpretation: dict = Field(
+        description="Plain-English explanation of each metric for viva presentation.",
+    )
+    recommendations: list[str] = Field(
+        description="Actionable suggestions for improving model performance.",
+    )
+    timestamp: str = Field(description="ISO-8601 UTC timestamp of when this report was generated.")
+    data_source: str = Field(
+        description="'synthetic' when evaluated on generated data, 'real' for real datasets.",
+        examples=["synthetic"],
+    )
+
+
+class SessionStats(BaseModel):
+    """Live statistics from predictions made in the current server session."""
+
+    total_predictions: int = Field(description="Total classify calls made since startup.", examples=[42])
+    real_count: int = Field(description="Number of REAL predictions.", examples=[28])
+    morphed_count: int = Field(description="Number of MORPHED predictions.", examples=[14])
+    real_percentage: float = Field(description="Percentage of REAL predictions.", examples=[66.67])
+    morphed_percentage: float = Field(description="Percentage of MORPHED predictions.", examples=[33.33])
+    avg_confidence: float = Field(description="Mean confidence score across all session predictions.", examples=[0.731])
