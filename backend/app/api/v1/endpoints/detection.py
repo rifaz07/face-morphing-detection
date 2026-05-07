@@ -1,11 +1,12 @@
 """
-Detection API endpoints — Modules 1, 2, 3, 4 & 5.
+Detection API endpoints — Modules 1, 2, 3, 4, 5 & 6.
 
-POST /api/v1/detection/validate     → Image validation pre-flight (Module 1)
-POST /api/v1/detection/detect-face  → Validate + detect + preprocess (Modules 1+2+3)
-POST /api/v1/detection/preprocess   → Full pipeline, returns preprocessing detail (Modules 1+2+3)
-POST /api/v1/detection/extract-lbp  → Full pipeline + LBP texture features (Modules 1+2+3+4)
-POST /api/v1/detection/extract-dct  → Full pipeline + DCT frequency features (Modules 1+2+3+5)
+POST /api/v1/detection/validate          → Image validation pre-flight (Module 1)
+POST /api/v1/detection/detect-face       → Validate + detect + preprocess (Modules 1+2+3)
+POST /api/v1/detection/preprocess        → Full pipeline, preprocessing detail (Modules 1+2+3)
+POST /api/v1/detection/extract-lbp       → Full pipeline + LBP texture features (Modules 1+2+3+4)
+POST /api/v1/detection/extract-dct       → Full pipeline + DCT frequency features (Modules 1+2+3+5)
+POST /api/v1/detection/extract-features  → Complete feature extraction pipeline (Modules 1–6)
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
@@ -14,6 +15,7 @@ from loguru import logger
 from app.ml.detectors.face_detector import FaceDetector
 from app.ml.exceptions import ImageProcessingError, InvalidImageError
 from app.ml.feature_extractors.dct_extractor import DCTExtractor
+from app.ml.feature_extractors.feature_fusion import FeatureFusion
 from app.ml.feature_extractors.lbp_extractor import LBPExtractor
 from app.ml.preprocessors.image_preprocessor import ImagePreprocessor
 from app.ml.validators.image_validator import ImageValidator
@@ -23,6 +25,8 @@ from app.schemas.detection import (
     DetectionErrorResponse,
     FaceBoundingBox,
     FaceDetectionResponse,
+    FusionResponse,
+    FusionResult,
     ImageValidationResponse,
     LBPResponse,
     LBPResult,
@@ -38,6 +42,7 @@ _detector = FaceDetector()
 _preprocessor = ImagePreprocessor()
 _lbp_extractor = LBPExtractor()
 _dct_extractor = DCTExtractor()
+_feature_fusion = FeatureFusion()
 
 
 # ---------------------------------------------------------------------------
@@ -510,3 +515,135 @@ async def extract_dct(file: UploadFile) -> DCTResponse:
     )
 
     return DCTResponse(detection=detection_response, dct=dct_result)
+
+
+# ---------------------------------------------------------------------------
+# POST /extract-features  (Modules 1 + 2 + 3 + 4 + 5 + 6)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/extract-features",
+    response_model=FusionResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Extract full fused feature vector (LBP + DCT) from the largest face",
+    description=(
+        "Complete feature extraction pipeline — Modules 1 → 2 → 3 → 4 → 5 → 6. "
+        "Validates the image, detects faces, preprocesses, extracts LBP texture "
+        "features (59 values) and DCT frequency features (1024 values), then fuses "
+        "them into a single 1083-dimensional vector with DCT MinMax-normalised to "
+        "[0,1] before concatenation. This fused vector is the direct input to the "
+        "K-Means clustering module. Returns null fusion field when no face found."
+    ),
+    responses={
+        200: {"description": "Fused 1083-dim feature vector for the largest detected face"},
+        400: {
+            "model": DetectionErrorResponse,
+            "description": "Image failed validation",
+        },
+        422: {
+            "model": DetectionErrorResponse,
+            "description": "Valid image but ML processing failed",
+        },
+    },
+    tags=["Detection"],
+)
+async def extract_features(file: UploadFile) -> FusionResponse:
+    """
+    Full pipeline: validate → detect → preprocess → LBP → DCT → fuse
+    (Modules 1+2+3+4+5+6).
+
+    Returns :class:`FusionResponse` with:
+    - **detection** — face detection + preprocessing results
+    - **lbp** — 59-element LBP feature vector for the largest face
+    - **dct** — 1024-element DCT feature vector for the largest face
+    - **fusion** — 1083-element fused vector (LBP + DCT_normalised), or null
+    """
+    file_bytes = await file.read()
+    filename = file.filename or "upload"
+
+    # Modules 1 + 2
+    _read_validate(file_bytes, filename)
+    detection = _run_detection(file_bytes)
+
+    # Module 3 — preprocess all crops
+    preprocessed_all = _preprocess_crops(detection.cropped_faces_b64)
+    detection_response = _build_detection_response(detection, preprocessed_all)
+
+    if not detection.largest_face or not detection.cropped_faces_b64:
+        return FusionResponse(
+            detection=detection_response, lbp=None, dct=None, fusion=None
+        )
+
+    # Identify the largest-face crop index
+    largest_area = detection.largest_face.area
+    largest_index = 0
+    for i, box in enumerate(detection.faces):
+        if box.area == largest_area:
+            largest_index = i
+            break
+
+    try:
+        import base64 as _base64
+        largest_crop_bytes = _base64.b64decode(
+            detection.cropped_faces_b64[largest_index]
+        )
+        normalized_array = _preprocessor.get_normalized_array(largest_crop_bytes)
+
+        # Modules 4 + 5
+        lbp_raw = _lbp_extractor.extract(normalized_array)
+        dct_raw = _dct_extractor.extract(normalized_array)
+
+        # Module 6 — fuse
+        fusion_raw = _feature_fusion.fuse(
+            lbp_raw.feature_vector, dct_raw.feature_vector
+        )
+    except ImageProcessingError as exc:
+        logger.error("Feature extraction/fusion failed: {}", exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=DetectionErrorResponse(
+                error_code="FEATURE_EXTRACTION_ERROR",
+                message=str(exc),
+                details=exc.details,
+            ).model_dump(),
+        )
+
+    lbp_result = LBPResult(
+        feature_vector=lbp_raw.feature_vector,
+        feature_vector_length=lbp_raw.feature_vector_length,
+        lbp_image_b64=lbp_raw.lbp_image_b64,
+        histogram_stats=lbp_raw.histogram_stats,
+        processing_time_ms=lbp_raw.processing_time_ms,
+        method=lbp_raw.method,
+        radius=lbp_raw.radius,
+        n_points=lbp_raw.n_points,
+    )
+    dct_result = DCTResult(
+        feature_vector=dct_raw.feature_vector,
+        feature_vector_length=dct_raw.feature_vector_length,
+        dct_image_b64=dct_raw.dct_image_b64,
+        dct_block_stats=dct_raw.dct_block_stats,
+        processing_time_ms=dct_raw.processing_time_ms,
+        dct_size=dct_raw.dct_size,
+        normalization=dct_raw.normalization,
+    )
+    fusion_result = FusionResult(
+        fused_vector=fusion_raw.fused_vector,
+        fused_vector_length=fusion_raw.fused_vector_length,
+        lbp_contribution=fusion_raw.lbp_contribution,
+        dct_contribution=fusion_raw.dct_contribution,
+        lbp_stats=fusion_raw.lbp_stats,
+        dct_stats=fusion_raw.dct_stats,
+        fused_stats=fusion_raw.fused_stats,
+        processing_time_ms=fusion_raw.processing_time_ms,
+        fusion_method=fusion_raw.fusion_method,
+        normalization_applied=fusion_raw.normalization_applied,
+    )
+
+    return FusionResponse(
+        detection=detection_response,
+        lbp=lbp_result,
+        dct=dct_result,
+        fusion=fusion_result,
+    )
