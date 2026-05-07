@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.database import check_db_connection
 from app.core.logging import setup_logging
 from app.ml.clustering.kmeans_classifier import KMeansClassifier
+from app.ml.evaluation.evaluator import ModelEvaluator
 
 setup_logging()
 
@@ -31,6 +32,21 @@ async def lifespan(app: FastAPI):
         logger.info("K-Means model trained on synthetic data | inertia={}", info.inertia)
     else:
         logger.info("K-Means model loaded from disk | inertia={}", info.inertia)
+
+    # Module 8 — run startup evaluation and cache the report.
+    evaluator = ModelEvaluator(classifier)
+    app.state.evaluator = evaluator
+    try:
+        report = evaluator.generate_report()
+        app.state.evaluation_report = report
+        m = report.metrics
+        logger.info(
+            "Startup evaluation complete | acc={:.3f} FAR={:.3f} FRR={:.3f} F1={:.3f}",
+            m.accuracy, m.far, m.frr, m.f1_score,
+        )
+    except Exception as exc:
+        logger.warning("Startup evaluation failed (non-fatal): {}", exc)
+        app.state.evaluation_report = None
 
     yield
     logger.info("Shutting down application")

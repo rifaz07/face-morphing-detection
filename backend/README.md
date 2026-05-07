@@ -92,7 +92,7 @@ app/
 | 5 | DCT Feature Extraction | ✅ Complete | `POST /api/v1/detection/extract-dct` |
 | 6 | Feature Fusion (LBP + DCT) | ✅ Complete | `POST /api/v1/detection/extract-features` |
 | 7 | K-Means Clustering | ✅ Complete | `POST /api/v1/detection/classify` |
-| 8 | Classification & Evaluation | Pending | — |
+| 8 | Classification & Evaluation | ✅ Complete | `GET /api/v1/detection/evaluation` |
 
 ### Feature Fusion (Module 6)
 
@@ -133,6 +133,37 @@ pixel represents its local texture.  Collecting a normalised histogram of
 all LBP codes (59 bins for the uniform variant) gives the **texture
 fingerprint** of the face.  Morphed images produce statistically different
 fingerprints from real images, which is what the classifier exploits.
+
+### Evaluation Metrics (Module 8)
+
+Computed on 200 synthetic test samples (100 REAL + 100 MORPHED, different seed to training):
+
+| Metric | Formula | What it means |
+|--------|---------|---------------|
+| **Accuracy** | (TP+TN) / N | Overall correct classification rate |
+| **FAR** | FP / (FP+TN) | Morphed faces incorrectly accepted as real — primary security metric |
+| **FRR** | FN / (FN+TP) | Real faces incorrectly rejected as morphed — affects user experience |
+| **Precision** | TP / (TP+FP) | Of all REAL predictions, fraction actually real |
+| **Recall** | TP / (TP+FN) | Of all real faces, fraction correctly accepted |
+| **F1 Score** | 2·P·R / (P+R) | Harmonic mean of precision and recall |
+
+Confusion matrix layout: `[[TN, FP], [FN, TP]]` — FP drives FAR, FN drives FRR.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/detection/evaluation` | Cached report (Accuracy, FAR, FRR, F1, confusion matrix + interpretation) |
+| `GET /api/v1/detection/evaluation/live` | Live session stats (predictions since startup) |
+| `POST /api/v1/detection/evaluation/run` | Trigger fresh evaluation, update cache |
+
+**Get evaluation report:**
+```bash
+curl http://localhost:8000/api/v1/detection/evaluation
+```
+
+**Run fresh evaluation:**
+```bash
+curl -X POST http://localhost:8000/api/v1/detection/evaluation/run
+```
 
 ### K-Means Clustering (Module 7)
 
