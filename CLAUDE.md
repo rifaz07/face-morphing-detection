@@ -156,8 +156,8 @@ test: add unit tests for face detection
 |---|-------------------------------|----------------------------------------------------------|
 | 1 | Image Input & Validation ✅   | Accept image, validate format/size/dimensions            |
 | 2 | Face Detection ✅             | OpenCV Haar Cascade to detect and crop face region       |
-| 3 | Preprocessing                 | Resize to 128×128, grayscale, normalize pixel values     |
-| 4 | LBP Feature Extraction        | Local Binary Pattern texture features                    |
+| 3 | Preprocessing ✅              | Resize to 128×128, grayscale, histogram eq, normalize    |
+| 4 | LBP Feature Extraction ✅     | Local Binary Pattern texture features (59-element vector)|
 | 5 | DCT Feature Extraction        | Discrete Cosine Transform frequency features             |
 | 6 | Feature Fusion                | Concatenate LBP + DCT into unified feature vector        |
 | 7 | K-Means Clustering            | Cluster features into Real / Morphed groups              |

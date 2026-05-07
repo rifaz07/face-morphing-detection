@@ -248,3 +248,69 @@ def test_preprocess_endpoint_returns_400_for_invalid(
         files=[_to_upload(invalid_format_bytes, "bad.txt", "text/plain")],
     )
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/detection/extract-lbp
+# ---------------------------------------------------------------------------
+
+
+def test_extract_lbp_endpoint_returns_200(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/extract-lbp",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "detection" in body
+    assert "lbp" in body
+
+
+def test_extract_lbp_endpoint_feature_vector_structure(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    """When a face is found, lbp field must contain a 59-element normalised vector."""
+    resp = client.post(
+        "/api/v1/detection/extract-lbp",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    if body["detection"]["face_count"] > 0:
+        lbp = body["lbp"]
+        assert lbp is not None
+        assert lbp["feature_vector_length"] == 59
+        assert len(lbp["feature_vector"]) == 59
+        assert abs(sum(lbp["feature_vector"]) - 1.0) < 1e-5
+        assert lbp["method"] == "uniform"
+        assert "lbp_image_b64" in lbp
+        assert "histogram_stats" in lbp
+
+
+def test_extract_lbp_no_face_returns_null_lbp(
+    client: TestClient,
+    random_noise_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/extract-lbp",
+        files=[_to_upload(random_noise_image_bytes, "noise.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["detection"]["face_count"] == 0
+    assert body["lbp"] is None
+
+
+def test_extract_lbp_returns_400_for_invalid_image(
+    client: TestClient,
+    invalid_format_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/extract-lbp",
+        files=[_to_upload(invalid_format_bytes, "bad.txt", "text/plain")],
+    )
+    assert resp.status_code == 400

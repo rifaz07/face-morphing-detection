@@ -1,9 +1,10 @@
 """
-Detection API endpoints — Modules 1, 2 & 3.
+Detection API endpoints — Modules 1, 2, 3 & 4.
 
 POST /api/v1/detection/validate     → Image validation pre-flight (Module 1)
 POST /api/v1/detection/detect-face  → Validate + detect + preprocess (Modules 1+2+3)
 POST /api/v1/detection/preprocess   → Full pipeline, returns preprocessing detail (Modules 1+2+3)
+POST /api/v1/detection/extract-lbp  → Full pipeline + LBP texture features (Modules 1+2+3+4)
 """
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
@@ -11,6 +12,7 @@ from loguru import logger
 
 from app.ml.detectors.face_detector import FaceDetector
 from app.ml.exceptions import ImageProcessingError, InvalidImageError
+from app.ml.feature_extractors.lbp_extractor import LBPExtractor
 from app.ml.preprocessors.image_preprocessor import ImagePreprocessor
 from app.ml.validators.image_validator import ImageValidator
 from app.schemas.detection import (
@@ -18,6 +20,8 @@ from app.schemas.detection import (
     FaceBoundingBox,
     FaceDetectionResponse,
     ImageValidationResponse,
+    LBPResponse,
+    LBPResult,
     PreprocessingResponse,
     PreprocessingResult,
 )
@@ -28,6 +32,7 @@ router = APIRouter()
 _validator = ImageValidator()
 _detector = FaceDetector()
 _preprocessor = ImagePreprocessor()
+_lbp_extractor = LBPExtractor()
 
 
 # ---------------------------------------------------------------------------
@@ -310,3 +315,100 @@ async def preprocess_face(file: UploadFile) -> PreprocessingResponse:
         detection=detection_response,
         preprocessing=largest_preprocessing,
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /extract-lbp  (Modules 1 + 2 + 3 + 4)
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/extract-lbp",
+    response_model=LBPResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Extract LBP texture features from the largest detected face",
+    description=(
+        "Runs the full Modules 1 → 2 → 3 → 4 pipeline: validates the image, "
+        "detects faces, preprocesses, then extracts a 59-element uniform LBP "
+        "histogram from the largest face. The LBP feature vector is the primary "
+        "texture descriptor used by the morphing detection classifier. "
+        "Returns null lbp field when no face is found."
+    ),
+    responses={
+        200: {"description": "Detection + LBP feature vector for the largest face"},
+        400: {
+            "model": DetectionErrorResponse,
+            "description": "Image failed validation",
+        },
+        422: {
+            "model": DetectionErrorResponse,
+            "description": "Valid image but ML processing failed",
+        },
+    },
+    tags=["Detection"],
+)
+async def extract_lbp(file: UploadFile) -> LBPResponse:
+    """
+    Full pipeline: validate → detect → preprocess → extract LBP (Modules 1+2+3+4).
+
+    Returns :class:`LBPResponse` with:
+    - **detection** — face detection result including preprocessed crops
+    - **lbp** — 59-element uniform LBP feature vector for the largest face,
+      or null if no face detected
+    """
+    file_bytes = await file.read()
+    filename = file.filename or "upload"
+
+    # Modules 1 + 2
+    _read_validate(file_bytes, filename)
+    detection = _run_detection(file_bytes)
+
+    # Module 3 — preprocess all crops
+    preprocessed_all = _preprocess_crops(detection.cropped_faces_b64)
+    detection_response = _build_detection_response(detection, preprocessed_all)
+
+    if not detection.largest_face or not detection.cropped_faces_b64:
+        return LBPResponse(detection=detection_response, lbp=None)
+
+    # Identify the preprocessed result for the largest face
+    largest_area = detection.largest_face.area
+    largest_index = 0
+    for i, box in enumerate(detection.faces):
+        if box.area == largest_area:
+            largest_index = i
+            break
+
+    largest_preprocessed = preprocessed_all[largest_index]
+
+    # Module 4 — extract LBP from the preprocessed array
+    # Re-derive the float32 array from the preprocessed bytes to avoid
+    # carrying raw numpy data through the Pydantic response chain.
+    try:
+        largest_crop_bytes = __import__("base64").b64decode(
+            detection.cropped_faces_b64[largest_index]
+        )
+        normalized_array = _preprocessor.get_normalized_array(largest_crop_bytes)
+        lbp_result_raw = _lbp_extractor.extract(normalized_array)
+    except ImageProcessingError as exc:
+        logger.error("LBP extraction failed: {}", exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=DetectionErrorResponse(
+                error_code="LBP_EXTRACTION_ERROR",
+                message=str(exc),
+                details=exc.details,
+            ).model_dump(),
+        )
+
+    lbp_result = LBPResult(
+        feature_vector=lbp_result_raw.feature_vector,
+        feature_vector_length=lbp_result_raw.feature_vector_length,
+        lbp_image_b64=lbp_result_raw.lbp_image_b64,
+        histogram_stats=lbp_result_raw.histogram_stats,
+        processing_time_ms=lbp_result_raw.processing_time_ms,
+        method=lbp_result_raw.method,
+        radius=lbp_result_raw.radius,
+        n_points=lbp_result_raw.n_points,
+    )
+
+    return LBPResponse(detection=detection_response, lbp=lbp_result)
