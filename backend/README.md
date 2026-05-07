@@ -90,9 +90,29 @@ app/
 | 3 | Preprocessing (resize / grayscale / normalise) | ✅ Complete | `POST /api/v1/detection/preprocess` |
 | 4 | LBP Feature Extraction | ✅ Complete | `POST /api/v1/detection/extract-lbp` |
 | 5 | DCT Feature Extraction | ✅ Complete | `POST /api/v1/detection/extract-dct` |
-| 6 | Feature Fusion (LBP + DCT) | Pending | — |
+| 6 | Feature Fusion (LBP + DCT) | ✅ Complete | `POST /api/v1/detection/extract-features` |
 | 7 | K-Means Clustering | Pending | — |
 | 8 | Classification & Evaluation | Pending | — |
+
+### Feature Fusion (Module 6)
+
+Combines the LBP vector (59 values, already in [0,1]) and the DCT vector
+(1024 values, log-compressed) into a single 1083-dimensional descriptor:
+
+| Component | Size | Share |
+|---|---|---|
+| LBP (texture) | 59 | 5.45 % |
+| DCT (frequency, MinMax-normalised) | 1024 | 94.55 % |
+| **Fused vector** | **1083** | **100 %** |
+
+DCT is MinMax-normalised to [0,1] before concatenation so neither component
+dominates the Euclidean distance used in K-Means clustering.
+
+**Extract full features (Modules 1–6):**
+```bash
+curl -X POST http://localhost:8000/api/v1/detection/extract-features \
+  -F "file=@/path/to/face.jpg"
+```
 
 ### DCT Feature Extraction
 

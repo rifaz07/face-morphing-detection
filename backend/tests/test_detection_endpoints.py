@@ -380,3 +380,73 @@ def test_extract_dct_returns_400_for_invalid_image(
         files=[_to_upload(invalid_format_bytes, "bad.txt", "text/plain")],
     )
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/detection/extract-features
+# ---------------------------------------------------------------------------
+
+
+def test_extract_features_endpoint_returns_200(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/extract-features",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "detection" in body
+    assert "lbp" in body
+    assert "dct" in body
+    assert "fusion" in body
+
+
+def test_extract_features_fusion_vector_structure(
+    client: TestClient,
+    valid_face_image_bytes: bytes,
+) -> None:
+    """When a face is found, fusion must contain a 1083-element vector."""
+    resp = client.post(
+        "/api/v1/detection/extract-features",
+        files=[_to_upload(valid_face_image_bytes, "face.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    if body["detection"]["face_count"] > 0:
+        fusion = body["fusion"]
+        assert fusion is not None
+        assert fusion["fused_vector_length"] == 1083
+        assert len(fusion["fused_vector"]) == 1083
+        assert fusion["fusion_method"] == "concatenation"
+        assert fusion["normalization_applied"] is True
+        assert abs(fusion["lbp_contribution"] - 5.4478) < 0.01
+        assert abs(fusion["dct_contribution"] - 94.5522) < 0.01
+
+
+def test_extract_features_no_face_returns_null_fusion(
+    client: TestClient,
+    random_noise_image_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/extract-features",
+        files=[_to_upload(random_noise_image_bytes, "noise.jpg")],
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["detection"]["face_count"] == 0
+    assert body["fusion"] is None
+    assert body["lbp"] is None
+    assert body["dct"] is None
+
+
+def test_extract_features_returns_400_for_invalid(
+    client: TestClient,
+    invalid_format_bytes: bytes,
+) -> None:
+    resp = client.post(
+        "/api/v1/detection/extract-features",
+        files=[_to_upload(invalid_format_bytes, "bad.txt", "text/plain")],
+    )
+    assert resp.status_code == 400

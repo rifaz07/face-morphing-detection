@@ -247,6 +247,77 @@ class DCTResponse(BaseModel):
     )
 
 
+class FusionResult(BaseModel):
+    """Result of the Module 6 feature fusion pass."""
+
+    fused_vector: list[float] = Field(
+        description=(
+            "Concatenated [LBP(59) | DCT_normalised(1024)] feature vector — "
+            "1083 float values all in [0.0, 1.0]. This is the input to K-Means."
+        ),
+        examples=[[0.012, 0.034]],
+    )
+    fused_vector_length: int = Field(
+        description="Length of the fused vector — always 1083.",
+        examples=[1083],
+    )
+    lbp_contribution: float = Field(
+        description="Percentage of the vector from LBP (59/1083 ≈ 5.45%).",
+        examples=[5.4478],
+    )
+    dct_contribution: float = Field(
+        description="Percentage of the vector from DCT (1024/1083 ≈ 94.55%).",
+        examples=[94.5522],
+    )
+    lbp_stats: dict = Field(
+        description="Descriptive stats of the LBP portion: min, max, mean, std.",
+        examples=[{"min": 0.0, "max": 0.21, "mean": 0.017, "std": 0.031}],
+    )
+    dct_stats: dict = Field(
+        description="Descriptive stats of the DCT portion after MinMax normalisation: min, max, mean, std.",
+        examples=[{"min": 0.0, "max": 1.0, "mean": 0.43, "std": 0.29}],
+    )
+    fused_stats: dict = Field(
+        description="Descriptive stats of the full 1083-element fused vector.",
+        examples=[{"min": 0.0, "max": 1.0, "mean": 0.41, "std": 0.28}],
+    )
+    processing_time_ms: float = Field(
+        description="Wall-clock time for the fusion pass in milliseconds.",
+        examples=[1.2],
+    )
+    fusion_method: str = Field(
+        description="Fusion strategy — always 'concatenation'.",
+        examples=["concatenation"],
+    )
+    normalization_applied: bool = Field(
+        description="True — DCT was MinMax-normalised to [0,1] before concatenation.",
+        examples=[True],
+    )
+
+
+class FusionResponse(BaseModel):
+    """Response schema for POST /api/v1/detection/extract-features."""
+
+    detection: FaceDetectionResponse = Field(
+        description="Full face detection result (Modules 1+2+3).",
+    )
+    lbp: Optional[LBPResult] = Field(
+        default=None,
+        description="LBP result for the largest face (Module 4), or null.",
+    )
+    dct: Optional[DCTResult] = Field(
+        default=None,
+        description="DCT result for the largest face (Module 5), or null.",
+    )
+    fusion: Optional[FusionResult] = Field(
+        default=None,
+        description=(
+            "Fused feature vector for the largest face (Module 6), or null "
+            "when no face was detected."
+        ),
+    )
+
+
 class DetectionErrorResponse(BaseModel):
     """Returned on 400 / 422 errors from detection endpoints."""
 
