@@ -1,0 +1,75 @@
+// Prisma schema for Face Morphing Detection System
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Result {
+  PENDING
+  REAL
+  MORPHED
+  ERROR
+}
+
+// ─────────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────────
+
+model User {
+  id          String       @id @default(cuid())
+  clerkId     String       @unique
+  email       String       @unique
+  name        String?
+  imageUrl    String?
+  role        Role         @default(USER)
+  predictions Prediction[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Prediction {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  imageUrl         String   // Cloudinary CDN URL
+  imageName        String
+  imageSize        Int      // bytes
+  result           Result   @default(PENDING)
+  confidence       Float?   // 0.0 – 1.0 from K-Means classifier
+  faceCount        Int?
+  processingTimeMs Float?
+  lbpVector        Json?    // 59-element LBP feature vector
+  dctVector        Json?    // 1024-element DCT feature vector
+  fusedVector      Json?    // 1083-element fused vector
+  errorMessage     String?
+  metadata         Json?    // image dimensions, format, etc.
+  createdAt        DateTime @default(now())
+}
+
+model ModelMetrics {
+  id           String   @id @default(cuid())
+  accuracy     Float    // (TP+TN)/N
+  far          Float    // False Acceptance Rate — morphed accepted as real
+  frr          Float    // False Rejection Rate  — real rejected as morphed
+  f1Score      Float    // harmonic mean of precision and recall
+  precision    Float
+  recall       Float
+  totalSamples Int
+  dataSource   String   // "synthetic" or "real"
+  recordedAt   DateTime @default(now())
+}

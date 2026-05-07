@@ -135,7 +135,21 @@ This starts:
 - **PostgreSQL 16** on `localhost:5432` (container: `fmd-postgres`)
 - **pgAdmin 4** on `localhost:5050` (container: `fmd-pgadmin`)
 
-### Step 4 — Verify both containers are healthy
+### Step 4 — Run database migrations and seed
+
+```bash
+cd frontend
+npm install
+npx prisma migrate dev --name init   # creates tables
+npx prisma db seed                    # inserts demo data
+npx prisma studio                     # optional: browse tables in browser GUI
+cd ..
+```
+
+Tables created: `User`, `Prediction`, `ModelMetrics` (plus Prisma internals).
+Seed inserts 2 demo users, 5 predictions (3 REAL / 2 MORPHED), and 1 metrics record.
+
+### Step 5 — Verify both containers are healthy
 
 ```bash
 docker ps
