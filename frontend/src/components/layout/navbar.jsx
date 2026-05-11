@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { SignInButton, SignUpButton, UserButton, useUser } from "@clerk/nextjs";
 import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetClose } from "@/components/ui/sheet";
-import { ScanFace, Menu } from "lucide-react";
+import { ScanFace, Menu, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
@@ -19,6 +20,7 @@ const NAV_LINKS = [
 
 export function Navbar() {
   const pathname = usePathname();
+  const { isSignedIn } = useUser();
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-background/80 backdrop-blur-xl">
@@ -61,12 +63,35 @@ export function Navbar() {
           {/* Right controls */}
           <div className="flex items-center gap-1.5">
             <ThemeToggle />
-            <Button variant="ghost" size="sm" className="hidden sm:flex text-sm" asChild>
-              <Link href="/sign-in">Sign In</Link>
-            </Button>
-            <Button size="sm" className="hidden sm:flex gradient-brand text-white hover:opacity-90 transition-opacity text-sm font-medium" asChild>
-              <Link href="/detect">Get Started</Link>
-            </Button>
+
+            {/* Auth controls — desktop */}
+            {!isSignedIn ? (
+              <>
+                <SignInButton mode="modal">
+                  <Button variant="ghost" size="sm" className="hidden sm:flex text-sm">
+                    Sign In
+                  </Button>
+                </SignInButton>
+                <SignUpButton mode="modal">
+                  <Button
+                    size="sm"
+                    className="hidden sm:flex gradient-brand text-white hover:opacity-90 transition-opacity text-sm font-medium"
+                  >
+                    Get Started
+                  </Button>
+                </SignUpButton>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" size="sm" className="hidden sm:flex gap-1.5 text-sm" asChild>
+                  <Link href="/dashboard">
+                    <LayoutDashboard className="size-4" />
+                    Dashboard
+                  </Link>
+                </Button>
+                <UserButton afterSignOutUrl="/" />
+              </>
+            )}
 
             {/* Mobile hamburger */}
             <Sheet>
@@ -92,16 +117,33 @@ export function Navbar() {
                     </SheetClose>
                   ))}
                   <div className="pt-3 mt-2 border-t flex flex-col gap-2">
-                    <SheetClose asChild>
-                      <Button variant="outline" size="sm" className="w-full" asChild>
-                        <Link href="/sign-in">Sign In</Link>
-                      </Button>
-                    </SheetClose>
-                    <SheetClose asChild>
-                      <Button size="sm" className="w-full gradient-brand text-white hover:opacity-90" asChild>
-                        <Link href="/detect">Get Started</Link>
-                      </Button>
-                    </SheetClose>
+                    {!isSignedIn ? (
+                      <>
+                        <SheetClose asChild>
+                          <SignInButton mode="modal">
+                            <Button variant="outline" size="sm" className="w-full">
+                              Sign In
+                            </Button>
+                          </SignInButton>
+                        </SheetClose>
+                        <SheetClose asChild>
+                          <SignUpButton mode="modal">
+                            <Button size="sm" className="w-full gradient-brand text-white hover:opacity-90">
+                              Get Started
+                            </Button>
+                          </SignUpButton>
+                        </SheetClose>
+                      </>
+                    ) : (
+                      <SheetClose asChild>
+                        <Button variant="outline" size="sm" className="w-full justify-start gap-2" asChild>
+                          <Link href="/dashboard">
+                            <LayoutDashboard className="size-4" />
+                            Dashboard
+                          </Link>
+                        </Button>
+                      </SheetClose>
+                    )}
                   </div>
                 </div>
               </SheetContent>
