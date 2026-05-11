@@ -36,7 +36,7 @@ services:
     environment:
       # Host must be the container name, not localhost (port 5432, not 5435)
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@fmd-postgres:5432/${POSTGRES_DB}
-      CORS_ORIGINS: http://localhost:3000
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3001
       ENV: development
       LOG_LEVEL: INFO
       PROJECT_NAME: Face Morphing Detection API
