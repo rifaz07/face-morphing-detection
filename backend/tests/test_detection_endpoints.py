@@ -13,11 +13,27 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.main import app
+from app.ml.clustering.kmeans_classifier import KMeansClassifier
+from app.ml.evaluation.evaluator import ModelEvaluator
 
 
 @pytest.fixture(scope="module")
-def client() -> TestClient:
+def client(tmp_path_factory) -> TestClient:
+    """
+    TestClient backed by an isolated, temp-dir K-Means model.
+
+    app.main.lifespan() always constructs KMeansClassifier() with the
+    production models_dir, which auto-loads (and, via /retrain, can
+    overwrite) the real kmeans_model.joblib on disk. Swap in a fresh
+    classifier backed by a temp directory right after startup so these
+    endpoint tests — including the /retrain tests — can never read or
+    write the production model file.
+    """
     with TestClient(app) as c:
+        tmp_models_dir = tmp_path_factory.mktemp("test_detection_endpoints_models")
+        app.state.classifier = KMeansClassifier(models_dir=tmp_models_dir)
+        app.state.evaluator = ModelEvaluator(app.state.classifier)
+        app.state.evaluation_report = app.state.evaluator.generate_report()
         yield c
 
 
