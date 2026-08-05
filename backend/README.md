@@ -136,7 +136,11 @@ fingerprints from real images, which is what the classifier exploits.
 
 ### Evaluation Metrics (Module 8)
 
-Computed on 200 synthetic test samples (100 REAL + 100 MORPHED, different seed to training):
+`GET /api/v1/detection/evaluation` is computed on 200 synthetic test samples
+(100 REAL + 100 MORPHED, different seed to training) — it evaluates whatever
+model is currently loaded, synthetic or real. For metrics from the real-data
+training run, see [Training on Real Data](#training-on-real-data) below or
+`ml/checkpoints/real_evaluation_report.json`.
 
 | Metric | Formula | What it means |
 |--------|---------|---------------|
@@ -181,15 +185,87 @@ confidence = 1 / (1 + distance / mean_cluster_distance)
 centroid, so confidence 1.0 means "on the centroid" and ~0.5 means "at the
 edge of the cluster".
 
-**Current training data:** 500 synthetic REAL + 500 synthetic MORPHED vectors
-generated at startup.  Replace with a real labelled face dataset for
-production.
+**Current training data:** trained on a 4,000-image sample (2,000 REAL + 2,000
+MORPHED) from the real Kaggle SSMD face-morphing dataset — see
+[Training on Real Data](#training-on-real-data) below. Falls back to 500
+synthetic REAL + 500 synthetic MORPHED vectors only when no saved model
+exists on disk.
 
 | Endpoint | Purpose |
 |---|---|
 | `POST /api/v1/detection/classify` | **Main endpoint** — full pipeline → REAL/MORPHED + confidence |
 | `GET  /api/v1/detection/model-info` | K-Means model state & metadata |
 | `POST /api/v1/detection/retrain` | Retrain on synthetic data |
+
+### Training on Real Data
+
+`backend/scripts/train_on_real_dataset.py` replaces the synthetic bootstrap
+model with one trained on the real Kaggle SSMD dataset. Every sampled image
+is pushed through the full Modules 1–6 pipeline (validate → detect →
+preprocess → LBP → DCT → fuse) to build a 1083-dim feature vector, exactly
+as `/classify` does at inference time. Images that fail any step (no face
+detected, corrupt file, validation failure) are logged and skipped — they
+never abort the run.
+
+**Prerequisites:**
+1. Dataset present on the host at `ml/dataset/real/*.png` and
+   `ml/dataset/morphed/*.png` (gitignored — not committed to the repo).
+2. `docker-compose.yml` mounts `./ml` read-only into the backend container
+   at `/app/ml_data`, plus a read-write overlay at
+   `/app/ml_data/checkpoints` so the script can save its outputs. Rebuild
+   after pulling this change: `docker-compose up -d --build backend`.
+
+**Sample run (validation — 4,000 images, ~5 min):**
+```bash
+docker exec fmd-backend python scripts/train_on_real_dataset.py --sample-per-class 2000
+```
+
+**Full run (all ~40,000 images, once the sample run is validated):**
+```bash
+docker exec fmd-backend python scripts/train_on_real_dataset.py --full
+```
+
+`--sample-per-class N` samples N images from **each** of `real/` and
+`morphed/` using `random.sample(seed=42)` for reproducibility; `--full`
+ignores the sample size and uses every image in both folders.
+
+**What the script does:**
+1. Lists and samples files from `real/` and `morphed/`.
+2. Runs each sampled image through the ML pipeline, logging progress every
+   100 images with a running success/fail count and ETA.
+3. Saves the extracted feature vectors to
+   `ml/checkpoints/features_sample.npz` (`X`, `y`, `failed_files`,
+   `sample_size`).
+4. Splits 80/20 (stratified, `random_state=42`), trains `KMeansClassifier`
+   on the training split (overwriting `kmeans_model.joblib` /
+   `kmeans_meta.joblib`), and evaluates on the held-out real test split.
+5. Writes `ml/checkpoints/real_evaluation_report.json` with the full metric
+   set and `"data_source": "real_kaggle_ssmd_set_sample"`.
+
+**After training, restart the backend to load the new model:**
+```bash
+docker-compose restart backend
+curl http://localhost:8000/api/v1/detection/model-info
+```
+
+**Result of the first 4,000-image validation run** (2,000 REAL + 2,000
+MORPHED sampled, 3,989 processed successfully, 11 skipped — no face
+detected):
+
+| Metric | Value |
+|---|---|
+| Accuracy | 71.18% |
+| FAR (morphed accepted as real) | 50.25% |
+| FRR (real rejected as morphed) | 7.29% |
+| Precision | 64.74% |
+| Recall | 92.71% |
+| F1 Score | 0.7624 |
+
+The high FAR shows that raw LBP+DCT features with unsupervised K-Means do
+not cleanly separate this dataset's morphed faces from real ones — a
+realistic result, unlike the synthetic data which was constructed to be
+trivially separable. This is expected for a first pass on real data and is
+the reason the task plan calls for scaling up to the full dataset next.
 
 ### Example curl commands
 

@@ -42,6 +42,11 @@ services:
       PROJECT_NAME: Face Morphing Detection API
     volumes:
       - ./backend:/app
+      - ./ml:/app/ml_data:ro
+      # Overlay a read-write mount for checkpoints only — the raw dataset
+      # above stays read-only, but the training script needs somewhere to
+      # write features_sample.npz and the evaluation report.
+      - ./ml/checkpoints:/app/ml_data/checkpoints
     depends_on:
       postgres:
         condition: service_healthy
