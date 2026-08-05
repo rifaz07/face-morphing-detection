@@ -163,6 +163,17 @@ test: add unit tests for face detection
 | 7 | K-Means Clustering ✅         | K-Means (k=2) on 1083-dim vectors → REAL / MORPHED label|
 | 8 | Classification & Evaluation ✅| Accuracy, FAR, FRR, F1, confusion matrix + viva report   |
 
+**Synthetic-data limitation — partially resolved:** K-Means (Module 7) was
+originally bootstrapped on synthetic feature vectors only. As of the
+`feature/train-real-dataset` branch, `backend/scripts/train_on_real_dataset.py`
+trains it on a 4,000-image sample (2,000 REAL + 2,000 MORPHED, random_state=42)
+drawn from the real Kaggle SSMD dataset (`ml/dataset/real/` — 25,000 images,
+`ml/dataset/morphed/` — 15,000 images). Real-data evaluation on this sample:
+71.18% accuracy, FAR 50.25%, FRR 7.29%, F1 0.7624 — see
+`ml/checkpoints/real_evaluation_report.json` and the backend README's
+"Training on Real Data" section. Full 30,000+ image training (`--full` flag)
+is pending as a follow-up run.
+
 ---
 
 ## WEBSITE PAGES
