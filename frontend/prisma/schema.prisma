@@ -70,6 +70,10 @@ model ModelMetrics {
   precision    Float
   recall       Float
   totalSamples Int
+  tp           Int      @default(0) // REAL correctly accepted
+  tn           Int      @default(0) // MORPHED correctly rejected
+  fp           Int      @default(0) // MORPHED incorrectly accepted (drives FAR)
+  fn           Int      @default(0) // REAL incorrectly rejected (drives FRR)
   dataSource   String   // "synthetic" or "real"
   recordedAt   DateTime @default(now())
 }

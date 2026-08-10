@@ -11,7 +11,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { BarChart2, Cpu, Layers } from "lucide-react";
+import { BarChart2, Cpu, Layers, Calculator } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -34,6 +34,114 @@ function MetricCard({ label, value, description, loading }) {
           <p className="text-4xl font-bold">{value}</p>
         )}
         <p className="text-xs text-muted-foreground mt-1">{description}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ConfusionMatrixBreakdown({ metrics, loading }) {
+  if (loading) {
+    return (
+      <Card className="border-border/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Calculator className="size-4 text-muted-foreground" aria-hidden />
+            How FAR and FRR are calculated
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-64 w-full rounded-lg" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!metrics) return null;
+
+  const { tp, tn, fp, fn, totalSamples, far, frr } = metrics;
+  const morphedTotal = fp + tn;
+
+  return (
+    <Card className="border-border/50">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Calculator className="size-4 text-muted-foreground" aria-hidden />
+          How FAR and FRR are calculated
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <p className="text-sm text-muted-foreground">
+          These numbers come from testing the model on {totalSamples} real photos it
+          had never seen during training.
+        </p>
+
+        {/* 2x2 confusion matrix */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr>
+                <th className="p-2 text-left font-medium text-muted-foreground"></th>
+                <th className="p-2 text-center font-medium text-muted-foreground">
+                  Predicted REAL
+                </th>
+                <th className="p-2 text-center font-medium text-muted-foreground">
+                  Predicted MORPHED
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th className="p-2 text-left font-medium text-muted-foreground whitespace-nowrap">
+                  Actual MORPHED
+                </th>
+                <td className="p-3 text-center rounded-lg bg-red-500/10 border border-red-500/20">
+                  <span className="text-xl font-bold text-red-600 dark:text-red-400">{fp}</span>
+                  <span className="block text-xs text-red-600/80 dark:text-red-400/80">wrong</span>
+                </td>
+                <td className="p-3 text-center rounded-lg bg-green-500/10 border border-green-500/20">
+                  <span className="text-xl font-bold text-green-600 dark:text-green-400">{tn}</span>
+                  <span className="block text-xs text-green-600/80 dark:text-green-400/80">correct</span>
+                </td>
+              </tr>
+              <tr>
+                <th className="p-2 text-left font-medium text-muted-foreground whitespace-nowrap">
+                  Actual REAL
+                </th>
+                <td className="p-3 text-center rounded-lg bg-green-500/10 border border-green-500/20">
+                  <span className="text-xl font-bold text-green-600 dark:text-green-400">{tp}</span>
+                  <span className="block text-xs text-green-600/80 dark:text-green-400/80">correct</span>
+                </td>
+                <td className="p-3 text-center rounded-lg bg-red-500/10 border border-red-500/20">
+                  <span className="text-xl font-bold text-red-600 dark:text-red-400">{fn}</span>
+                  <span className="block text-xs text-red-600/80 dark:text-red-400/80">wrong</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Formula block */}
+        <div className="rounded-lg bg-muted/40 border border-border/50 p-4 font-mono text-xs sm:text-sm space-y-3 overflow-x-auto">
+          <div>
+            <p className="text-muted-foreground">FAR = wrongly-accepted-morphed / all-actually-morphed</p>
+            <p>
+              FAR = {fp} / ({fp} + {tn})
+            </p>
+            <p className="font-semibold text-foreground">FAR = {(far * 100).toFixed(2)}%</p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">FRR = wrongly-rejected-real / all-actually-real</p>
+            <p>
+              FRR = {fn} / ({fn} + {tp})
+            </p>
+            <p className="font-semibold text-foreground">FRR = {(frr * 100).toFixed(2)}%</p>
+          </div>
+        </div>
+
+        <p className="text-sm text-muted-foreground">
+          In practical terms: out of every {morphedTotal} morphed photos tested, {fp} slipped
+          through undetected.
+        </p>
       </CardContent>
     </Card>
   );
@@ -89,6 +197,9 @@ export default function AnalyticsPage() {
           loading={loading}
         />
       </div>
+
+      {/* Confusion matrix breakdown */}
+      <ConfusionMatrixBreakdown metrics={metrics} loading={loading} />
 
       {/* Bar chart */}
       <Card className="border-border/50">
@@ -162,7 +273,7 @@ export default function AnalyticsPage() {
           </dl>
           <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
             <Layers className="size-3.5 shrink-0" aria-hidden />
-            Trained on synthetic morphed/real face dataset. Production model pending real-world calibration.
+            Trained on 3,191 real Kaggle photos (not synthetic data), evaluated on 798 held-out real test photos.
           </div>
         </CardContent>
       </Card>
