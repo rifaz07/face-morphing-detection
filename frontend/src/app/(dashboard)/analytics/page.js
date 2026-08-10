@@ -273,7 +273,7 @@ export default function AnalyticsPage() {
           </dl>
           <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
             <Layers className="size-3.5 shrink-0" aria-hidden />
-            Trained on synthetic morphed/real face dataset. Production model pending real-world calibration.
+            Trained on 3,191 real Kaggle photos (not synthetic data), evaluated on 798 held-out real test photos.
           </div>
         </CardContent>
       </Card>
