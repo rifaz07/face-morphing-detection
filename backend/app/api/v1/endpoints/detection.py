@@ -778,6 +778,7 @@ async def classify_image(request: Request, file: UploadFile) -> ClassifyResponse
         confidence=pred_raw.confidence,
         cluster_id=pred_raw.cluster_id,
         distance_to_centroid=pred_raw.distance_to_centroid,
+        mean_cluster_distance=pred_raw.mean_cluster_distance,
         processing_time_ms=pred_raw.processing_time_ms,
     )
 
@@ -790,6 +791,8 @@ async def classify_image(request: Request, file: UploadFile) -> ClassifyResponse
         detection=detection_response,
         fusion=fusion_result,
         prediction=prediction_result,
+        lbp_image_b64=lbp_raw.lbp_image_b64,
+        dct_image_b64=dct_raw.dct_image_b64,
     )
 
 

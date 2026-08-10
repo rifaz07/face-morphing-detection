@@ -17,9 +17,10 @@ import {
   Clock,
   Users,
   Maximize2,
+  Calculator,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -99,6 +100,147 @@ function ConfidenceCounter({ target }) {
   }, [target]);
 
   return <span>{display}</span>;
+}
+
+function FaceBoxOverlay({ imageUrl, faceBox, originalImageDimensions, isReal }) {
+  if (!imageUrl || !faceBox || !originalImageDimensions) return null;
+
+  const { x, y, width, height } = faceBox;
+  const { width: ow, height: oh } = originalImageDimensions;
+  const leftPct = (x / ow) * 100;
+  const topPct = (y / oh) * 100;
+  const widthPct = (width / ow) * 100;
+  const heightPct = (height / oh) * 100;
+
+  return (
+    <div className="relative mt-1">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imageUrl}
+        alt="Uploaded face with detection overlay"
+        className="w-full h-auto rounded-xl border border-border/50 block"
+      />
+      <div
+        className={cn(
+          "absolute border-2 rounded-sm pointer-events-none",
+          isReal ? "border-green-500" : "border-red-500"
+        )}
+        style={{
+          left: `${leftPct}%`,
+          top: `${topPct}%`,
+          width: `${widthPct}%`,
+          height: `${heightPct}%`,
+        }}
+      >
+        <span
+          className={cn(
+            "absolute -top-6 left-0 whitespace-nowrap text-[10px] font-semibold px-1.5 py-0.5 rounded",
+            isReal ? "bg-green-500 text-white" : "bg-red-500 text-white"
+          )}
+        >
+          Face detected — {width}×{height}px
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function CalculationProofSection({ result }) {
+  const {
+    croppedFaceB64,
+    lbpImageB64,
+    dctImageB64,
+    distanceToCentroid,
+    meanClusterDistance,
+    confidence,
+  } = result;
+
+  return (
+    <Card className="border-border/50">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Calculator className="size-4 text-muted-foreground" aria-hidden />
+          How this result was calculated
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <p className="text-sm text-muted-foreground">
+          These values are unique to this specific photo — a different image produces
+          different numbers below.
+        </p>
+
+        {/* Three visualisation images */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="space-y-2 text-center">
+            <div className="rounded-lg border border-border/50 overflow-hidden bg-muted/20 aspect-square flex items-center justify-center">
+              {croppedFaceB64 ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`data:image/jpeg;base64,${croppedFaceB64}`}
+                  alt="Detected face crop"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-xs text-muted-foreground">—</span>
+              )}
+            </div>
+            <p className="text-xs font-medium">Face detected</p>
+          </div>
+
+          <div className="space-y-2 text-center">
+            <div className="rounded-lg border border-border/50 overflow-hidden bg-muted/20 aspect-square flex items-center justify-center">
+              {lbpImageB64 ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`data:image/jpeg;base64,${lbpImageB64}`}
+                  alt="LBP texture pattern"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-xs text-muted-foreground">—</span>
+              )}
+            </div>
+            <p className="text-xs font-medium">Texture pattern (LBP)</p>
+            <p className="text-[11px] text-muted-foreground">
+              59 texture measurements extracted from this pattern
+            </p>
+          </div>
+
+          <div className="space-y-2 text-center">
+            <div className="rounded-lg border border-border/50 overflow-hidden bg-muted/20 aspect-square flex items-center justify-center">
+              {dctImageB64 ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={`data:image/jpeg;base64,${dctImageB64}`}
+                  alt="DCT frequency pattern"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-xs text-muted-foreground">—</span>
+              )}
+            </div>
+            <p className="text-xs font-medium">Frequency pattern (DCT)</p>
+            <p className="text-[11px] text-muted-foreground">
+              1024 frequency measurements extracted from this pattern
+            </p>
+          </div>
+        </div>
+
+        {/* Confidence formula */}
+        <div className="rounded-lg bg-muted/40 border border-border/50 p-4 font-mono text-xs sm:text-sm space-y-2 overflow-x-auto">
+          <p>distance to nearest cluster center:  {distanceToCentroid}</p>
+          <p>average distance for that cluster:   {meanClusterDistance}</p>
+          <p className="pt-2 text-muted-foreground">
+            confidence = 1 / (1 + distance / avg_distance)
+          </p>
+          <p>
+            confidence = 1 / (1 + {distanceToCentroid} / {meanClusterDistance})
+          </p>
+          <p className="font-semibold text-foreground">confidence = {confidence}</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function DetectPage() {
@@ -403,6 +545,14 @@ export default function DetectPage() {
                   </div>
                 </div>
 
+                {/* Uploaded photo with face-box overlay */}
+                <FaceBoxOverlay
+                  imageUrl={result.imageUrl}
+                  faceBox={result.faceBox}
+                  originalImageDimensions={result.originalImageDimensions}
+                  isReal={result.prediction === "REAL"}
+                />
+
                 {/* Details */}
                 <div className="grid grid-cols-3 gap-3 pt-2 border-t border-border/50">
                   <div className="flex flex-col items-center gap-1 text-center">
@@ -453,6 +603,11 @@ export default function DetectPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* How this result was calculated */}
+            <div className="mt-6">
+              <CalculationProofSection result={result} />
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
