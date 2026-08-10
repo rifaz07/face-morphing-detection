@@ -161,6 +161,18 @@ export async function POST(request) {
       )
     }
 
+    // Identify the cropped-face thumbnail matching the largest detected face
+    // (same face/index correspondence the backend uses internally).
+    let largestFaceCropB64 = null
+    const largestFace = mlResult.detection?.largest_face
+    if (largestFace) {
+      const largestArea = largestFace.width * largestFace.height
+      const faces = mlResult.detection?.faces ?? []
+      const crops = mlResult.detection?.cropped_faces_b64 ?? []
+      const idx = faces.findIndex((f) => f.width * f.height === largestArea)
+      largestFaceCropB64 = idx !== -1 ? crops[idx] ?? null : null
+    }
+
     // Step 7 — Save to Prisma
     const totalMs =
       (mlResult.detection?.processing_time_ms ?? 0) +
@@ -197,6 +209,20 @@ export async function POST(request) {
       imageUrl: cloudinaryResult.secure_url,
       imageDimensions: mlResult.detection.image_dimensions,
       predictionId: saved.id,
+      faceBox: mlResult.detection.largest_face
+        ? {
+            x: mlResult.detection.largest_face.x,
+            y: mlResult.detection.largest_face.y,
+            width: mlResult.detection.largest_face.width,
+            height: mlResult.detection.largest_face.height,
+          }
+        : null,
+      originalImageDimensions: mlResult.detection.image_dimensions,
+      croppedFaceB64: largestFaceCropB64,
+      lbpImageB64: mlResult.lbp_image_b64 ?? null,
+      dctImageB64: mlResult.dct_image_b64 ?? null,
+      distanceToCentroid: mlResult.prediction.distance_to_centroid,
+      meanClusterDistance: mlResult.prediction.mean_cluster_distance,
     })
   } catch (error) {
     console.error('[POST /api/detect]', error)

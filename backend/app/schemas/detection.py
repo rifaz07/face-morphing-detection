@@ -364,6 +364,14 @@ class KMeansPredictionResult(BaseModel):
         description="Euclidean distance from the feature vector to its assigned centroid.",
         examples=[1.2345],
     )
+    mean_cluster_distance: float = Field(
+        description=(
+            "Mean distance-to-centroid across all training samples in this cluster. "
+            "Used as the denominator in the confidence formula: "
+            "confidence = 1 / (1 + distance_to_centroid / mean_cluster_distance)."
+        ),
+        examples=[2.1],
+    )
     processing_time_ms: float = Field(
         description="Wall-clock time for the K-Means prediction step.",
         examples=[0.8],
@@ -470,6 +478,22 @@ class ClassifyResponse(BaseModel):
         description=(
             "K-Means classification result (Module 7): REAL or MORPHED with "
             "confidence score.  Null when no face was detected."
+        ),
+    )
+    lbp_image_b64: Optional[str] = Field(
+        default=None,
+        description=(
+            "Base64-encoded JPEG of the LBP-transformed image for the largest "
+            "detected face — same image /extract-lbp returns. Null when no "
+            "face was detected."
+        ),
+    )
+    dct_image_b64: Optional[str] = Field(
+        default=None,
+        description=(
+            "Base64-encoded JPEG of the log-scaled DCT coefficient map for the "
+            "largest detected face — same image /extract-dct returns. Null "
+            "when no face was detected."
         ),
     )
 

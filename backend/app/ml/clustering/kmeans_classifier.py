@@ -74,6 +74,7 @@ class PredictionResult(BaseModel):
     confidence: float
     cluster_id: int
     distance_to_centroid: float
+    mean_cluster_distance: float
     processing_time_ms: float
 
 
@@ -329,6 +330,7 @@ class KMeansClassifier:
             confidence=confidence,
             cluster_id=cluster_id,
             distance_to_centroid=round(distance, 4),
+            mean_cluster_distance=round(mean_dist, 4),
             processing_time_ms=round(elapsed_ms, 3),
         )
         self._record_prediction(result)
